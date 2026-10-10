@@ -1,0 +1,6 @@
+node_modules/
+target/
+src-tauri/gen/
+*.key
+.env
+.DS_Store

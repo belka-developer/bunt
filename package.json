@@ -1,0 +1,15 @@
+{
+  "name": "bunt",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Бунт — единый центр сетевых инструментов",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "bump": "node scripts/bump.mjs"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

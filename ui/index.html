@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Бунт</title>
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-mark" viewBox="0 0 24 24"><path d="M9 3h6M12 3v2.5M7 8c3.5-1.2 7-1 10 .6M7 12.2c3.5-1.2 7-1 10 .6M7 16.4c3.5-1.2 7-1 10 .6M12 18.5V21"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5M5.5 10v9.5h5v-5h3v5h5V10"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-6l-4 3v-3H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/></symbol>
+    <symbol id="i-plane" viewBox="0 0 24 24"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></symbol>
+    <symbol id="i-net" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2.2"/><circle cx="19" cy="6" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M7 11l10-4M7 13l10 4"/></symbol>
+    <symbol id="i-vpn" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.5 3.1 8 7.5 9.5 4.4-1.5 7.5-5 7.5-9.5V6z"/><circle cx="12" cy="11" r="2"/><path d="M12 13v3"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.5 3.1 8 7.5 9.5 4.4-1.5 7.5-5 7.5-9.5V6z"/><path d="M9 12l2.2 2.2L15.5 10"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.5-4M4 4v4h4M4 13a8 8 0 0 0 14.5 4M20 20v-4h-4"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h8M18 7h2M4 17h2M12 17h8"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><rect x="9" y="9" width="6" height="6" rx="1"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8M6.3 6.8a8 8 0 1 0 11.4 0"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M3 9.5a14 14 0 0 1 18 0M6.5 13a9 9 0 0 1 11 0M10 16.5a4 4 0 0 1 4 0"/><circle cx="12" cy="19.5" r=".8"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 3 20h18z"/><path d="M12 10v4M12 17h.01"/></symbol>
+    <symbol id="i-min" viewBox="0 0 24 24"><path d="M6 12h12"/></symbol>
+    <symbol id="i-max" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
+  </defs>
+</svg>
+
+<div class="stage">
+  <header class="bar">
+    <div class="brand">
+      <span class="mark"><svg class="ic"><use href="#i-mark"/></svg></span>
+      <div>
+        <div class="wordmark">Бунт</div>
+        <div class="tagline">Прототип интерфейса. Данные в нём примерные, ничего не запускается.</div>
+      </div>
+    </div>
+    <button class="btn" id="trayBtn" data-act="toggleTray" aria-pressed="true"><svg class="ic"><use href="#i-sliders"/></svg>Меню в трее</button>
+  </header>
+
+  <div class="desk with-tray" id="desk">
+    <div class="window" id="win">
+      <div class="titlebar">
+        <span class="ttl"><svg class="ic"><use href="#i-mark"/></svg>Бунт v<span data-appver>0.1.0</span></span>
+        <span class="wctl" aria-hidden="true"><svg class="ic"><use href="#i-min"/></svg><svg class="ic"><use href="#i-max"/></svg><svg class="ic"><use href="#i-x"/></svg></span>
+      </div>
+      <div class="shell">
+        <aside class="side">
+          <nav aria-label="Разделы">
+            <button class="nav" data-go="home"><svg class="ic"><use href="#i-home"/></svg>Главная</button>
+            <button class="nav" data-go="discord"><svg class="ic"><use href="#i-chat"/></svg>Zapret (Discord)</button>
+            <button class="nav" data-go="telegram"><svg class="ic"><use href="#i-plane"/></svg>Zapret (Telegram)<span class="soon-tag">скоро</span></button>
+            <button class="nav" data-go="vless"><svg class="ic"><use href="#i-net"/></svg>VLESS<span class="soon-tag">скоро</span></button>
+            <button class="nav" data-go="wg"><svg class="ic"><use href="#i-vpn"/></svg>WireGuard<span class="soon-tag">скоро</span></button>
+            <button class="nav" data-go="security"><svg class="ic"><use href="#i-shield"/></svg>Безопасность</button>
+            <button class="nav" data-go="settings"><svg class="ic"><use href="#i-sliders"/></svg>Настройки</button>
+          </nav>
+          <div class="side-foot">
+            <div class="pill" id="sidePill"></div>
+            <div class="ver">Версия: <span data-appver>0.1.0</span></div>
+          </div>
+        </aside>
+
+        <main class="view" id="view">
+
+          <!-- Главная -->
+          <section data-page="home">
+            <div class="page-head">
+              <div>
+                <h1>Добро пожаловать!</h1>
+                <p class="sub">Ваш сетевой помощник всегда под рукой</p>
+              </div>
+              <div class="chips">
+                <div class="chip"><span class="ico"><svg class="ic"><use href="#i-wifi"/></svg></span><span><small>Подключение к интернету</small><strong class="good">Стабильное</strong></span></div>
+                <div class="chip"><span class="ico"><svg class="ic"><use href="#i-clock"/></svg></span><span><small>Время работы</small><strong id="uptime"></strong></span></div>
+              </div>
+            </div>
+            <div class="panel" id="verPanel">
+              <div class="panel-head">
+                <h3>Версии и обновления</h3>
+                <div class="vhead">
+                  <span class="note">Проверено: <span id="lastCheck"></span></span>
+                  <button class="btn sm" data-act="checkUpdates"><svg class="ic"><use href="#i-refresh"/></svg>Проверить</button>
+                </div>
+              </div>
+              <p class="note warn" id="verErr" hidden></p>
+              <div id="verList"></div>
+            </div>
+          </section>
+
+          <!-- Discord и YouTube -->
+          <section data-page="discord" hidden>
+            <div class="page-head">
+              <div>
+                <h1>Zapret для Discord и YouTube</h1>
+                <p class="sub">Один раздел вместо bat-файлов и service.bat. Стратегии и обновления берутся из репозитория Flowseal.</p>
+              </div>
+              <div class="head-sw"><span class="state" data-state="discord"></span><button class="sw" role="switch" data-svc="discord" aria-label="Zapret для Discord и YouTube"></button></div>
+            </div>
+            <div class="panel">
+              <div class="strat-bar">
+                <div class="strat-info">
+                  <div id="stratLine">Сейчас: <b class="mono" id="stratNow"></b></div>
+                  <div class="note" id="stratWhen"></div>
+                  <div id="testBox" hidden>
+                    <div class="note" id="testState"></div>
+                    <div class="bar-track mt-s"><span class="bar-fill"></span></div>
+                  </div>
+                </div>
+                <button class="btn primary" id="btnTest" data-act="autotest"><svg class="ic"><use href="#i-refresh"/></svg>Подобрать стратегию</button>
+              </div>
+              <div class="strats" id="strats"></div>
+            </div>
+            <div class="cols mt">
+              <div class="stack">
+                <div class="panel">
+                  <div class="panel-head"><h3>Доступность сервисов</h3><span class="note">Проверка: <span id="lastTest"></span></span></div>
+                  <div id="targets"></div>
+                </div>
+                <div class="panel">
+                  <h3>Фильтры</h3>
+                  <div class="row"><div class="lbl">Game Filter<small>Обход для игр и других сервисов на TCP и UDP, порты выше 1023. После переключения нужен перезапуск стратегии.</small></div><button class="sw" role="switch" data-sw="discord.game" aria-label="Game Filter"></button></div>
+                  <div class="row"><div class="lbl">IPSet Filter<small id="ipsetDesc"></small></div>
+                    <div class="seg" data-seg="discord.ipset"><button data-v="none">none</button><button data-v="loaded">loaded</button><button data-v="any">any</button></div>
+                  </div>
+                  <p class="note warn" id="ipsetWarn" hidden>Режим any затрагивает все сайты. Включайте его на время проверки.</p>
+                </div>
+                <div class="panel">
+                  <div class="panel-head"><h3>Свои списки</h3><span class="note">Файлы создаются при первом запуске</span></div>
+                  <div id="lists"></div>
+                  <div class="row"><div class="lbl">Список ipset-all.txt из репозитория<small>Обновлён: <span id="ipsetUpd"></span></small></div><button class="btn sm" data-act="updIpset"><svg class="ic"><use href="#i-refresh"/></svg>Обновить</button></div>
+                </div>
+              </div>
+              <div class="stack">
+                <div class="panel">
+                  <h3>Автозапуск</h3>
+                  <div class="row"><div class="lbl">Запускать вместе с Windows<small>Устанавливает службу со стратегией <b class="mono" id="svcStrat"></b></small></div><button class="sw" role="switch" data-sw="discord.service" aria-label="Запускать вместе с Windows"></button></div>
+                  <div class="row"><div class="lbl">Состояние<small>Стратегия, служба и драйвер WinDivert</small></div><div class="tags" id="svcStatus"></div></div>
+                  <div class="row"><div class="lbl">Удалить службы и WinDivert<small>Если драйвер остался в службах после удаления</small></div><button class="btn sm" data-act="removeSvc">Удалить</button></div>
+                </div>
+                <div class="panel">
+                  <h3>Обслуживание</h3>
+                  <div class="row"><div class="lbl">Файл hosts<small>Чинит веб-версию Telegram и голосовой чат Discord</small></div><div class="inl"><span class="tag" id="hostsTag"></span><button class="btn sm" data-act="updHosts">Обновить</button></div></div>
+                  <div class="row"><div class="lbl">Фейки<small>Заменить используемый фейк на другой из папки bin</small></div><div class="inl"><select class="field" id="fakeSel" data-bind="discord.fake" aria-label="Фейк"></select><button class="btn sm" data-act="applyFake">Заменить</button></div></div>
+                  <div class="row"><div class="lbl">Диагностика<small>Ищет частые причины, почему zapret не работает</small></div><button class="btn sm" data-act="diag">Запустить</button></div>
+                  <div class="row"><div class="lbl">Тесты<small>Стандартный проверяет сайты из utils/targets.txt, DPI-чекеры проверяют разных провайдеров</small></div><div class="inl"><button class="btn sm" data-act="stub" data-arg="Стандартный тест: в прототипе не выполняется">Стандартный</button><button class="btn sm" data-act="stub" data-arg="DPI-чекеры: в прототипе не выполняются">DPI-чекеры</button></div></div>
+                </div>
+                <div class="panel">
+                  <h3>Компонент</h3>
+                  <div class="row"><span class="lbl">Версия</span><span class="val">1.2.3</span></div>
+                  <div class="row"><span class="lbl">Источник</span><span class="val">Flowseal/zapret-discord-youtube</span></div>
+                  <div class="row"><span class="lbl">Лицензия</span><span class="val">MIT</span></div>
+                  <div class="row"><div class="lbl">Автопроверка обновлений<small>Проверять новые релизы при запуске</small></div><button class="sw" role="switch" data-sw="discord.autoupd" aria-label="Автопроверка обновлений"></button></div>
+                  <div class="row"><div class="lbl">Проверить сейчас</div><button class="btn sm" data-act="checkUpdates"><svg class="ic"><use href="#i-refresh"/></svg>Проверить</button></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Telegram -->
+          <section data-page="telegram" data-soon hidden>
+            <div class="soon">
+              <span class="badge b-telegram"><svg class="ic"><use href="#i-plane"/></svg></span>
+              <span class="tag warn">Скоро</span>
+              <h1>Zapret для Telegram</h1>
+              <p class="sub">Здесь появится локальный прокси для Telegram Desktop. Раздел в разработке.</p>
+            </div>
+            <div class="page-head">
+              <div>
+                <h1>Zapret для Telegram</h1>
+                <p class="sub">Локальный прокси для Telegram Desktop. Включили здесь, один раз добавили адрес в Telegram.</p>
+              </div>
+              <div class="head-sw"><span class="state" data-state="telegram"></span><button class="sw" role="switch" data-svc="telegram" aria-label="Zapret для Telegram"></button></div>
+            </div>
+            <div class="cols">
+              <div class="stack">
+                <div class="panel">
+                  <h3>Адрес прокси</h3>
+                  <div class="field-row">
+                    <input class="field mono" value="127.0.0.1" readonly aria-label="Адрес">
+                    <input class="field mono" id="tgPort" data-bind="telegram.port" inputmode="numeric" maxlength="5" aria-label="Порт" style="flex: 0 1 110px">
+                  </div>
+                  <div class="field-row mt">
+                    <input class="field mono" id="tgLink" readonly aria-label="Ссылка для Telegram">
+                    <button class="btn" data-act="copyTg"><svg class="ic"><use href="#i-copy"/></svg>Копировать</button>
+                  </div>
+                  <p class="note mt">В Telegram Desktop: Настройки → Продвинутые → Тип соединения → SOCKS5. Либо вставьте ссылку выше в любой чат и нажмите на неё.</p>
+                </div>
+              </div>
+              <div class="stack">
+                <div class="panel">
+                  <h3>Компонент</h3>
+                  <div class="row"><span class="lbl">Версия</span><span class="val">1.2.3</span></div>
+                  <div class="row"><span class="lbl">Источник</span><span class="val">Flowseal/tg-ws-proxy</span></div>
+                  <div class="row"><span class="lbl">Режим</span><span class="val">Авто</span></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- VLESS -->
+          <section data-page="vless" data-soon hidden>
+            <div class="soon">
+              <span class="badge b-vless"><svg class="ic"><use href="#i-net"/></svg></span>
+              <span class="tag warn">Скоро</span>
+              <h1>VLESS</h1>
+              <p class="sub">Здесь появится управление серверами и подписками VLESS. Раздел в разработке.</p>
+            </div>
+            <div class="page-head">
+              <div>
+                <h1>VLESS</h1>
+                <p class="sub">Серверы и подписки. Выберите сервер, затем включите.</p>
+              </div>
+              <div class="head-sw"><span class="state" data-state="vless"></span><button class="sw" role="switch" data-svc="vless" aria-label="VLESS"></button></div>
+            </div>
+            <div class="cols">
+              <div class="panel">
+                <div class="panel-head"><h3>Серверы</h3><button class="btn sm" data-act="pingAll" data-arg="vless"><svg class="ic"><use href="#i-refresh"/></svg>Проверить пинг</button></div>
+                <div id="list-vless"></div>
+              </div>
+              <div class="panel">
+                <h3>Добавить</h3>
+                <div class="field-row"><input class="field mono" id="vlessIn" placeholder="vless://… или ссылка на подписку" aria-label="Ссылка vless или подписка"><button class="btn primary" data-act="addVless"><svg class="ic"><use href="#i-plus"/></svg>Добавить</button></div>
+                <p class="note mt" id="vlessMsg">Вставьте ссылку из буфера обмена или адрес подписки.</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- WireGuard -->
+          <section data-page="wg" data-soon hidden>
+            <div class="soon">
+              <span class="badge b-wg"><svg class="ic"><use href="#i-vpn"/></svg></span>
+              <span class="tag warn">Скоро</span>
+              <h1>WireGuard</h1>
+              <p class="sub">Здесь появится управление профилями WireGuard. Раздел в разработке.</p>
+            </div>
+            <div class="page-head">
+              <div>
+                <h1>WireGuard</h1>
+                <p class="sub">Профили из .conf файлов.</p>
+              </div>
+              <div class="head-sw"><span class="state" data-state="wg"></span><button class="sw" role="switch" data-svc="wg" aria-label="WireGuard"></button></div>
+            </div>
+            <div class="cols">
+              <div class="panel">
+                <div class="panel-head"><h3>Профили</h3><button class="btn sm" data-act="pickWg"><svg class="ic"><use href="#i-plus"/></svg>Импорт .conf</button></div>
+                <div id="list-wg"></div>
+                <input type="file" id="wgFile" accept=".conf,text/plain" hidden>
+              </div>
+              <div class="panel">
+                <h3>Как это работает</h3>
+                <p class="note">Бунт хранит профили у себя и включает туннель одной кнопкой. Ключи остаются на этом компьютере.</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- Безопасность -->
+          <section data-page="security" hidden>
+            <div class="page-head">
+              <div>
+                <h1>Проверка целостности и защита</h1>
+                <p class="sub">Хеши, цифровые подписи и сверка с эталоном. Вирусы не смогут незаметно подменить утилиты.</p>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="sec-top">
+                <span class="sec-ico" id="secIco"><svg class="ic"><use href="#i-shield"/></svg></span>
+                <div><h2 id="secTitle" style="font-size:18px;font-weight:600"></h2><p class="note" id="secText"></p></div>
+              </div>
+              <div class="sec-list" id="secList"></div>
+              <div class="btnrow"><button class="btn primary" id="btnSec" data-act="runSec"><svg class="ic"><use href="#i-shield"/></svg>Запустить проверку</button><span class="note" style="align-self:center">Последняя проверка: <span id="secLast"></span></span></div>
+            </div>
+          </section>
+
+          <!-- Настройки -->
+          <section data-page="settings" hidden>
+            <div class="page-head">
+              <div>
+                <h1>Настройки</h1>
+                <p class="sub">Простой и понятный интерфейс.</p>
+              </div>
+            </div>
+            <div class="cols">
+              <div class="stack">
+                <div class="panel">
+                  <h3>Общие</h3>
+                  <div class="row"><span class="lbl">Запускать при старте Windows</span><button class="sw" role="switch" data-sw="settings.autostart" aria-label="Запускать при старте Windows"></button></div>
+                  <div class="row"><span class="lbl">Сворачивать в трей</span><button class="sw" role="switch" data-sw="settings.tray" aria-label="Сворачивать в трей"></button></div>
+                  <div class="row"><span class="lbl">Показывать уведомления</span><button class="sw" role="switch" data-sw="settings.notify" aria-label="Показывать уведомления"></button></div>
+                  <div class="row"><span class="lbl">Проверять обновления автоматически</span><button class="sw" role="switch" data-sw="settings.autoupdate" aria-label="Проверять обновления автоматически"></button></div>
+                  <div class="row"><span class="lbl">Тема интерфейса</span>
+                    <select class="field" style="width:170px" aria-label="Тема интерфейса"><option>Тёмная</option><option disabled>Светлая (скоро)</option></select></div>
+                  <div class="row"><span class="lbl">Язык интерфейса</span>
+                    <select class="field" style="width:170px" aria-label="Язык интерфейса"><option>Русский</option><option disabled>English (скоро)</option></select></div>
+                  <div class="btnrow"><button class="btn primary" data-act="saveSettings">Сохранить</button></div>
+                </div>
+              </div>
+              <div class="stack">
+                <div class="panel">
+                  <h3>О программе</h3>
+                  <div class="about">
+                    <span class="mark"><svg class="ic"><use href="#i-mark"/></svg></span>
+                    <div>
+                      <div class="strong">Бунт <span class="note">v<span data-appver>0.1.0</span></span></div>
+                      <div class="note">Единый центр сетевых инструментов</div>
+                      <div class="links"><span>GitHub</span><span>Документация</span><span>Поддержка</span></div>
+                    </div>
+                  </div>
+                  <p class="note mt">Лицензия: GNU General Public License v3.0. Сделано для тех, кто ценит свободу.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </main>
+      </div>
+    </div>
+
+    <aside class="tray-wrap" id="tray">
+      <div class="cap">Меню в трее</div>
+      <div class="tray">
+        <div class="tray-head"><svg class="ic"><use href="#i-mark"/></svg>Бунт</div>
+        <ul id="trayList"></ul>
+        <div class="tray-foot"><span id="trayIcons">Служб активно: 0</span><span id="trayClock"></span></div>
+      </div>
+    </aside>
+  </div>
+</div>
+<div class="modal" id="modal" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <div class="d-head"><h3 id="mTitle"></h3><button class="btn sm ghost" data-act="closeModal" aria-label="Закрыть"><svg class="ic"><use href="#i-x"/></svg></button></div>
+    <div class="d-body" id="mBody"></div>
+    <div class="d-foot" id="mFoot"></div>
+  </div>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
