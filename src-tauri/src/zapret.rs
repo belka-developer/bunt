@@ -137,27 +137,62 @@ fn prepare_lists(dir: &Path, ipset: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// PID процессов winws.exe, запущенных из нашей папки modules (чужие, например от службы Flowseal, не трогаем).
-fn our_pids() -> Vec<u32> {
+/// Все запущенные winws.exe: (PID, путь к файлу).
+fn list_winws() -> Vec<(u32, String)> {
     #[cfg(windows)]
     {
-        let Ok(root) = crate::modules::modules_root() else { return Vec::new() };
-        let mask = format!("{}\\*", root.display()).replace('\'', "''");
-        let script = format!(
-            "Get-Process winws -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -like '{mask}' }} | ForEach-Object {{ $_.Id }}"
-        );
+        let script = "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Process winws -ErrorAction SilentlyContinue | ForEach-Object { \"$($_.Id)|$($_.Path)\" }";
         if let Ok(o) = Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .args(["-NoProfile", "-NonInteractive", "-Command", script])
             .creation_flags(CREATE_NO_WINDOW)
             .output()
         {
             return String::from_utf8_lossy(&o.stdout)
                 .lines()
-                .filter_map(|l| l.trim().parse().ok())
+                .filter_map(|l| {
+                    let (id, path) = l.trim().split_once('|')?;
+                    Some((id.parse().ok()?, path.to_string()))
+                })
                 .collect();
         }
     }
     Vec::new()
+}
+
+fn norm(p: &str) -> String {
+    p.replace('/', "\\").to_lowercase()
+}
+
+/// Запущен ли этот winws из папки modules Бунта.
+fn is_ours(path: &str) -> bool {
+    match crate::modules::modules_root() {
+        Ok(root) => norm(path).starts_with(&norm(&root.display().to_string())),
+        Err(_) => false,
+    }
+}
+
+/// PID процессов winws.exe из нашей папки (чужие, например от службы Flowseal, не трогаем).
+fn our_pids() -> Vec<u32> {
+    list_winws().into_iter().filter(|(_, p)| is_ours(p)).map(|(id, _)| id).collect()
+}
+
+#[cfg(windows)]
+fn sc(args: &[&str]) -> Option<String> {
+    Command::new("sc")
+        .args(args)
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+}
+#[cfg(not(windows))]
+fn sc(_args: &[&str]) -> Option<String> {
+    None
+}
+
+fn service_exists(name: &str) -> bool {
+    sc(&["query", name]).is_some()
 }
 
 fn kill_pid(pid: u32) {
@@ -172,18 +207,8 @@ fn kill_pid(pid: u32) {
     let _ = pid;
 }
 
-fn winws_running() -> bool {
-    #[cfg(windows)]
-    {
-        let out = Command::new("tasklist")
-            .args(["/FI", "IMAGENAME eq winws.exe", "/NH"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
-        if let Ok(o) = out {
-            return String::from_utf8_lossy(&o.stdout).to_lowercase().contains("winws.exe");
-        }
-    }
-    false
+fn foreign_winws() -> Vec<String> {
+    list_winws().into_iter().filter(|(_, p)| !is_ours(p)).map(|(_, p)| p).collect()
 }
 
 fn tail(path: &Path) -> String {
@@ -219,8 +244,8 @@ pub async fn zapret_start(
         return Err("Неверное имя стратегии".into());
     }
     state.stop();
-    if winws_running() {
-        return Err("winws.exe уже запущен (возможно, служба Flowseal или другой запуск). Остановите его и повторите.".into());
+    if !foreign_winws().is_empty() || service_exists("zapret") {
+        return Err("Запрет уже запущен не из Бунта (служба zapret или другой winws.exe). Остановите его, и Бунт сможет запустить свой.".into());
     }
 
     let dir: PathBuf = crate::modules::active_dir("discord")?;
@@ -267,8 +292,9 @@ pub async fn zapret_start(
 
 /// Останавливает запрет.
 #[tauri::command]
-pub fn zapret_stop(state: tauri::State<'_, Zapret>) {
+pub async fn zapret_stop(state: tauri::State<'_, Zapret>) -> Result<(), String> {
     state.stop();
+    Ok(())
 }
 
 #[derive(serde::Serialize)]
@@ -282,7 +308,7 @@ pub struct Status {
 /// Работает ли winws из папки Бунта и с какими настройками он был запущен.
 /// Нужно при старте: после обновления Бунта запрет продолжает работать, и интерфейс должен это показать.
 #[tauri::command]
-pub fn zapret_status(state: tauri::State<'_, Zapret>) -> Status {
+pub async fn zapret_status(state: tauri::State<'_, Zapret>) -> Result<Status, String> {
     let own = {
         let mut guard = state.0.lock().unwrap();
         match guard.as_mut() {
@@ -297,7 +323,54 @@ pub fn zapret_status(state: tauri::State<'_, Zapret>) -> Status {
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default();
     let get = |k: &str| last.get(k).and_then(|v| v.as_str()).map(String::from);
-    Status { running, strategy: get("strategy"), game: get("game"), ipset: get("ipset") }
+    Ok(Status { running, strategy: get("strategy"), game: get("game"), ipset: get("ipset") })
+}
+
+#[derive(serde::Serialize)]
+pub struct Foreign {
+    /// Установлена служба zapret (Flowseal)
+    service: bool,
+    /// Пути к чужим winws.exe
+    procs: Vec<String>,
+}
+
+/// Запущен ли запрет не из Бунта: служба zapret или winws.exe из другой папки.
+#[tauri::command]
+pub async fn zapret_foreign() -> Result<Foreign, String> {
+    Ok(Foreign { service: service_exists("zapret"), procs: foreign_winws() })
+}
+
+/// Останавливает чужой запрет: службу zapret (с удалением, чтобы не вернулась после перезагрузки),
+/// чужие winws.exe и остатки драйвера WinDivert. Файлы Flowseal на диске не трогает.
+#[tauri::command]
+pub async fn zapret_take_over(state: tauri::State<'_, Zapret>) -> Result<(), String> {
+    state.stop();
+    if service_exists("zapret") {
+        let _ = sc(&["stop", "zapret"]);
+        for _ in 0..10 {
+            match sc(&["query", "zapret"]) {
+                Some(s) if !s.contains("STOPPED") => std::thread::sleep(Duration::from_millis(500)),
+                _ => break,
+            }
+        }
+        let _ = sc(&["delete", "zapret"]);
+    }
+    for (pid, path) in list_winws() {
+        if !is_ours(&path) {
+            kill_pid(pid);
+        }
+    }
+    std::thread::sleep(Duration::from_millis(600));
+    if !foreign_winws().is_empty() {
+        return Err("Не удалось остановить чужой winws.exe. Закройте его вручную.".into());
+    }
+    for name in ["WinDivert", "WinDivert14"] {
+        if service_exists(name) {
+            let _ = sc(&["stop", name]);
+            let _ = sc(&["delete", name]);
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

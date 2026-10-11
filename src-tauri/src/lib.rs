@@ -162,7 +162,9 @@ pub fn run() {
             zapret::zapret_strategies,
             zapret::zapret_start,
             zapret::zapret_stop,
-            zapret::zapret_status
+            zapret::zapret_status,
+            zapret::zapret_foreign,
+            zapret::zapret_take_over
         ])
         .setup(|app| {
             setup_tray(app)?;

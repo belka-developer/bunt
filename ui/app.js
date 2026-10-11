@@ -322,8 +322,49 @@
   }
   /* настоящий запуск и остановка winws */
   var zBusy = false;
-  function realDiscord(on, quiet) {
+  /* запрет уже работает не из Бунта (служба Flowseal или другой winws): предлагаем перейти на Бунт */
+  function askTakeOver(f) {
+    var what = [];
+    if (f.service) what.push('служба <b class="mono">zapret</b> (она будет остановлена и удалена из автозапуска Windows)');
+    if (f.procs.length) what.push('процесс <b class="mono">winws.exe</b>: <span class="mono">' + esc(f.procs[0]) + '</span>' + (f.procs.length > 1 ? ' и ещё ' + (f.procs.length - 1) : ''));
+    openModal('Запрет работает не из Бунта',
+      '<p>Найдено: ' + what.join('; ') + '.</p>' +
+      '<p class="note">Оба запрета сразу работать не могут, они мешают друг другу. Бунт остановит чужой запрет и запустит свой со стратегией <b class="mono">' + esc(S.discord.strategy) + '</b>. Файлы Flowseal на диске останутся.</p>',
+      '<button class="btn" data-act="closeModal">Отмена</button><button class="btn primary" data-act="takeOver">Остановить и запустить из Бунта</button>');
+  }
+  function checkForeign() {
+    return T.core.invoke('zapret_foreign').then(function (f) {
+      var found = f.service || f.procs.length;
+      if (found) askTakeOver(f);
+      return !!found;
+    }).catch(function () { return false; });
+  }
+  function takeOver() {
+    closeModal();
     if (zBusy) return;
+    zBusy = true;
+    addLog({ svc: 'Zapret (Discord)', m: 'Останавливаем запрет, запущенный не из Бунта…' });
+    T.core.invoke('zapret_take_over').then(function () {
+      zBusy = false;
+      realDiscord(true, false, true);
+    }).catch(function (err) {
+      zBusy = false;
+      addLog({ svc: 'Zapret (Discord)', m: 'Ошибка: ' + err });
+      toast(String(err).slice(0, 200), 'warn');
+      renderAll();
+    });
+  }
+  function realDiscord(on, quiet, skipCheck) {
+    if (zBusy) return;
+    if (on && !skipCheck) {
+      zBusy = true;
+      T.core.invoke('zapret_foreign').then(function (f) {
+        zBusy = false;
+        if (f.service || f.procs.length) askTakeOver(f);
+        else realDiscord(true, quiet, true);
+      }).catch(function () { zBusy = false; realDiscord(true, quiet, true); });
+      return;
+    }
     zBusy = true;
     var d = S.discord, n = SVC.discord.name;
     var p = on
@@ -633,6 +674,7 @@
     pickWg: function () { $('#wgFile').click(); },
     updateOne: updateOne,
     installComp: installComp,
+    takeOver: takeOver,
     runSec: runSec,
     saveSettings: function () { toast('Настройки сохранены'); },
     exitApp: function () { toast('В настоящем приложении здесь закроется Бунт.'); },
@@ -741,6 +783,10 @@
       Object.keys(m).forEach(function (id) { if (comp(id)) comp(id).cur = m[id]; });
       renderAll();
       Object.keys(REAL).forEach(function (id) { refreshLatest(id).then(renderAll); });
+      /* при запуске: если запрет уже работает не из Бунта, предложить перейти на Бунт */
+      if (comp('discord').cur) {
+        T.core.invoke('zapret_status').then(function (st) { if (!st.running) checkForeign(); }).catch(function () {});
+      }
     }).catch(function () { renderAll(); });
     T.event.listen('module-progress', function (e) {
       var p = e.payload || {}, c = comp(p.id);
