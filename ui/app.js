@@ -39,6 +39,7 @@
     on: { discord: false, telegram: false, vless: false, wg: false },
     discord: { mode: 'auto', strategy: 'general (ALT2)', game: false, ipset: 'none', lastTest: 'сегодня, 14:32', autoupd: true, ipsetUpdated: 'сегодня, 09:12' },
     telegram: { port: '1443', link: '' },
+    tgc: { host: '127.0.0.1', port: '1443', secret: '', dc_ip: '2:149.154.167.220\n4:149.154.167.220', verbose: false, buf_kb: '256', pool_size: '4', log_max_mb: '5', cfproxy: true, h2: true, cf_domain_on: false, cf_domain: '', cf_worker_on: false, cf_worker: '', force_test_dc: false, no_secure: false, fake_tls_domain: '' },
     lists: {
       general: { file: 'list-general-user.txt', title: 'Свои домены', hint: 'Домены для обхода, по одному на строку. Поддомены учитываются автоматически.', text: '# по одному домену на строку\nexample.org\ncdn.example.org\n' },
       exclude: { file: 'list-exclude-user.txt', title: 'Исключения доменов', hint: 'Домены, которые не нужно обрабатывать, даже если их IP есть в ipset-all.txt.', text: '' },
@@ -224,10 +225,9 @@
   }
 
   function renderTelegram() {
-    var p = String(S.telegram.port).replace(/\D/g, '') || '1443';
+    var p = String(S.tgc.port).replace(/\D/g, '') || '1443';
     $('#tgLink').value = S.telegram.link || (inTauri ? '' : 'tg://proxy?server=127.0.0.1&port=' + p + '&secret=dd00000000000000000000000000000000');
     var tv = $('#tVer'); if (tv) tv.textContent = comp('telegram').cur || '–';
-    var tp = $('#tgPort'); if (tp && document.activeElement !== tp) tp.value = p;
   }
 
   function renderProfiles(t) {
@@ -492,9 +492,45 @@
   }
   /* Telegram: локальный MTProto-прокси, права администратора не нужны */
   var tBusy = false;
+  var TGN = ['port', 'buf_kb', 'pool_size', 'log_max_mb'];
   function applyTg(st) {
-    S.telegram.port = String(st.port);
+    var c = st.config || {};
+    Object.keys(S.tgc).forEach(function (k) { if (c[k] !== undefined) S.tgc[k] = TGN.indexOf(k) >= 0 ? String(c[k]) : c[k]; });
+    S.telegram.port = S.tgc.port;
     S.telegram.link = st.link || '';
+  }
+  function tgPayload() {
+    var o = {};
+    Object.keys(S.tgc).forEach(function (k) { o[k] = TGN.indexOf(k) >= 0 ? parseInt(S.tgc[k], 10) : S.tgc[k]; });
+    for (var i = 0; i < TGN.length; i++) if (!(o[TGN[i]] >= 0)) return TGN[i];
+    return o;
+  }
+  function tgSave() {
+    if (!inTauri || !installed('telegram')) return;
+    var o = tgPayload();
+    if (typeof o === 'string') { toast('Проверьте числовые поля: ' + o, 'warn'); return; }
+    T.core.invoke('telegram_config_set', { config: o }).then(function (st) {
+      applyTg(st);
+      S.on.telegram = st.running;
+      addLog({ svc: SVC.telegram.name, m: 'Настройки применены' + (st.running ? ', прокси перезапущен. Если менялись порт или секрет, добавьте новую ссылку в Telegram.' : '.') });
+      toast('Настройки применены');
+    }).catch(function (err) { toast(String(err).slice(0, 220), 'warn'); S.on.telegram = false; }).then(renderAll);
+  }
+  function tgReset() {
+    if (!inTauri || !installed('telegram')) return;
+    T.core.invoke('telegram_config_reset').then(function (st) {
+      applyTg(st);
+      S.on.telegram = st.running;
+      toast('Настройки сброшены (секрет прежний)');
+    }).catch(function (err) { toast(String(err).slice(0, 220), 'warn'); }).then(renderAll);
+  }
+  function tgSecret() {
+    if (!inTauri || !installed('telegram')) return;
+    T.core.invoke('telegram_new_secret').then(function (st) {
+      applyTg(st);
+      S.on.telegram = st.running;
+      toast('Новый секрет создан. Добавьте новую ссылку в Telegram.');
+    }).catch(function (err) { toast(String(err).slice(0, 220), 'warn'); }).then(renderAll);
   }
   function realTelegram(on, quiet) {
     if (tBusy) return;
@@ -510,17 +546,6 @@
       addLog({ svc: n, m: 'Ошибка: ' + err });
       if (!quiet) toast(String(err).slice(0, 200), 'warn');
     }).then(function () { tBusy = false; renderAll(); });
-  }
-  function setTgPort(v) {
-    var port = parseInt(v, 10);
-    if (!inTauri || !installed('telegram')) return;
-    if (!(port >= 1024 && port <= 65535)) { toast('Порт должен быть от 1024 до 65535.', 'warn'); renderAll(); return; }
-    T.core.invoke('telegram_set_port', { port: port }).then(function (st) {
-      applyTg(st);
-      S.on.telegram = st.running;
-      addLog({ svc: SVC.telegram.name, m: 'Порт изменён на ' + st.port + (st.running ? '. Прокси перезапущен, обновите ссылку в Telegram.' : '.') });
-      toast('Порт изменён. Обновите ссылку в Telegram.');
-    }).catch(function (err) { toast(String(err).slice(0, 200), 'warn'); }).then(renderAll);
   }
   function restartDiscord() {
     if (!inTauri || !S.on.discord) return;
@@ -688,6 +713,7 @@
     renderAll();
     T.core.invoke('install_component', { id: id }).then(function (v) {
       c.cur = v; c.latest = v; c.next = null; c.busy = null;
+      if (id === 'telegram') T.core.invoke('telegram_status').then(function (st) { applyTg(st); renderAll(); }).catch(function () {});
       addLog({ svc: c.name, m: 'Установлено: ' + v + '. Хеш проверен.', ok: true });
       toast(c.name + ' установлен');
       renderAll();
@@ -899,6 +925,7 @@
     toggleAll: toggleAll,
     checkUpdates: checkUpdates,
     autotest: autotest,
+    tgSave: tgSave, tgReset: tgReset, tgSecret: tgSecret,
     copyTg: function () { copyText($('#tgLink').value, 'Ссылка скопирована'); },
     addVless: addVless,
     pingAll: function (a) { pingAll(a); },
@@ -973,10 +1000,6 @@
   });
   document.addEventListener('input', function (e) {
     var el = e.target;
-    if (el.id === 'tgPort') el.value = el.value.replace(/\D/g, '').slice(0, 5);
-  });
-  document.addEventListener('change', function (e) {
-    if (e.target.id === 'tgPort') setTgPort(e.target.value);
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
   $('#modal').addEventListener('click', function (e) { if (e.target === this) closeModal(); });

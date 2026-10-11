@@ -86,6 +86,10 @@ struct Progress {
     total: Option<u64>,
 }
 
+pub(crate) fn progress(app: &AppHandle, id: &str, downloaded: u64, total: u64) {
+    let _ = app.emit("module-progress", Progress { id: id.to_string(), downloaded, total: Some(total) });
+}
+
 pub(crate) fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent(concat!("Bunt/", env!("CARGO_PKG_VERSION")))
@@ -119,20 +123,6 @@ async fn fetch_release_url(url: String) -> Result<Release, String> {
         return Err(format!("GitHub ответил: {}", resp.status()));
     }
     resp.json().await.map_err(|e| format!("Непонятный ответ GitHub: {e}"))
-}
-
-/// Файл релиза и его хеш, если GitHub его отдаёт. Для Telegram это один exe, для остальных zip-архив.
-pub(crate) fn pick_for(id: &str, rel: &Release) -> Result<(String, Option<String>), String> {
-    if id == "telegram" {
-        let want = crate::telegram::release_asset_name();
-        return rel
-            .assets
-            .iter()
-            .find(|a| a.name.eq_ignore_ascii_case(want))
-            .map(|a| (a.browser_download_url.clone(), a.digest.clone()))
-            .ok_or_else(|| format!("В релизе нет файла {want}"));
-    }
-    pick_archive(rel)
 }
 
 /// Архив релиза и его хеш, если GitHub его отдаёт.
@@ -184,12 +174,7 @@ pub fn modules_dir() -> Result<String, String> {
 #[tauri::command]
 pub async fn latest_component(id: String) -> Result<Latest, String> {
     let rel = fetch_release(&id).await?;
-    let asset = if id == "telegram" {
-        let want = crate::telegram::release_asset_name();
-        rel.assets.iter().find(|a| a.name.eq_ignore_ascii_case(want))
-    } else {
-        rel.assets.iter().find(|a| a.name.to_lowercase().ends_with(".zip"))
-    };
+    let asset = rel.assets.iter().find(|a| a.name.to_lowercase().ends_with(".zip"));
     Ok(Latest {
         version: clean_version(&rel.tag_name),
         size: asset.and_then(|a| a.size),
@@ -232,20 +217,26 @@ pub async fn install_component(
     let version = safe_dir_name(&clean_version(&rel.tag_name))?;
     let root = modules_root()?;
     let target = root.join(&id).join(&version);
-    if target.is_dir() && !force {
+    // Первая сборка Telegram ставила exe: такая папка без исходников прокси не годится
+    let broken = id == "telegram" && target.is_dir() && !target.join("proxy").is_dir();
+    if target.is_dir() && !force && !broken {
         let mut st = read_state(&root);
         st.insert(id, version.clone());
         write_state(&root, &st)?;
         return Ok(version);
     }
 
-    let (url, digest) = pick_for(&id, &rel)?;
+    let (url, digest) = pick_archive(&rel)?;
     let staging = root.join(".staging");
     let _ = fs::remove_dir_all(&staging);
     fs::create_dir_all(&staging).map_err(|e| format!("Нет прав на запись в {}: {e}", staging.display()))?;
 
     let result: Result<(), String> = async {
         let root_dir = download_and_extract(&app, &id, &url, digest.as_deref(), &staging).await?;
+        if id == "telegram" {
+            // Python и библиотеки для запуска прокси без окна
+            crate::telegram::ensure_runtime(&app).await?;
+        }
         // Файлы заняты работающим процессом: останавливаем его прямо перед заменой
         if id == "telegram" {
             crate::telegram::stop();
@@ -259,22 +250,12 @@ pub async fn install_component(
         } else {
             previous.as_deref().map(read_user_lists).unwrap_or_default()
         };
-        let tg_data = if id == "telegram" {
-            crate::telegram::read_data(if target.is_dir() { Some(&target) } else { previous.as_deref() })
-        } else {
-            Vec::new()
-        };
         if target.is_dir() {
             fs::remove_dir_all(&target).map_err(|e| format!("Не удалось удалить старые файлы: {e}"))?;
         }
         fs::create_dir_all(target.parent().ok_or("Неверный путь")?).map_err(|e| e.to_string())?;
         fs::rename(&root_dir, &target).map_err(|e| format!("Не удалось переместить файлы: {e}"))?;
         restore_user_lists(&target, &saved);
-        if id == "telegram" {
-            // порт и секрет остаются прежними, чтобы не пришлось заново настраивать Telegram
-            crate::telegram::restore_data(&target, &tg_data);
-            crate::telegram::prepare(&target)?;
-        }
         // Хеши файлов, по ним работает быстрая проверка целостности
         let _ = crate::integrity::write_manifest(&target);
         Ok(())
@@ -289,7 +270,8 @@ pub async fn install_component(
     // Старые версии больше не нужны
     if let Ok(rd) = fs::read_dir(root.join(&id)) {
         for e in rd.flatten() {
-            if e.file_name().to_string_lossy() != version.as_str() {
+            let n = e.file_name().to_string_lossy().to_string();
+            if n != version.as_str() && !(id == "telegram" && crate::telegram::is_service_dir(&n)) {
                 let _ = fs::remove_dir_all(e.path());
             }
         }
@@ -353,12 +335,6 @@ async fn download_and_extract(
     }
 
     let unpacked = staging.join("unpacked");
-    if id == "telegram" {
-        // в релизе один exe, архива нет
-        fs::create_dir_all(&unpacked).map_err(|e| e.to_string())?;
-        fs::rename(&zip_path, unpacked.join(crate::telegram::EXE)).map_err(|e| e.to_string())?;
-        return Ok(unpacked);
-    }
     extract_zip(&zip_path, &unpacked)?;
 
     // Если всё лежит в одной вложенной папке (так делает zipball), поднимаем её содержимое.
@@ -366,7 +342,7 @@ async fn download_and_extract(
     Ok(if entries.len() == 1 && entries[0].path().is_dir() { entries[0].path() } else { unpacked })
 }
 
-fn extract_zip(zip_path: &Path, out: &Path) -> Result<(), String> {
+pub(crate) fn extract_zip(zip_path: &Path, out: &Path) -> Result<(), String> {
     let mut archive = zip::ZipArchive::new(fs::File::open(zip_path).map_err(|e| e.to_string())?)
         .map_err(|e| format!("Архив повреждён: {e}"))?;
     for i in 0..archive.len() {

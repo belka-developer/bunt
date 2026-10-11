@@ -229,7 +229,9 @@ pub fn run() {
             telegram::telegram_status,
             telegram::telegram_start,
             telegram::telegram_stop,
-            telegram::telegram_set_port
+            telegram::telegram_config_set,
+            telegram::telegram_new_secret,
+            telegram::telegram_config_reset
         ])
         .on_window_event(|window, event| {
             if window.label() != "main" {

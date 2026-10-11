@@ -1,9 +1,18 @@
 //! Запрет для Telegram: локальный MTProto-прокси `tg-ws-proxy` (Flowseal, лицензия MIT).
 //!
-//! В релизе лежит один `TgWsProxy_windows.exe`. Бунт кладёт его в `modules\telegram\<версия>`,
-//! готовит рядом портативный конфиг (`TgWsProxy_data\config.json`) и запускает без окна настроек.
-//! Права администратора для работы не нужны.
+//! Бунт не запускает трей-приложение из релиза, а ставит исходники прокси и запускает их
+//! в терминальном режиме (`python -m proxy.tg_ws_proxy`) без окна. Python берётся
+//! встраиваемый (embeddable) с python.org и лежит в самой папке Бунта. Раскладка:
+//!
+//! ```text
+//! modules\telegram\<версия>\   исходники прокси (zip релиза)
+//! modules\telegram\runtime\    встроенный Python и библиотеки
+//! modules\telegram\data\       config.json, proxy.log (переживают обновление)
+//! ```
+//!
+//! Права администратора не нужны.
 
+use serde::{Deserialize, Serialize};
 use std::{
     collections::hash_map::RandomState,
     fs,
@@ -12,6 +21,7 @@ use std::{
     process::{Command, Stdio},
     time::Duration,
 };
+use tauri::AppHandle;
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -19,16 +29,81 @@ use std::os::windows::process::CommandExt;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-/// Имя exe внутри папки компонента.
-pub(crate) const EXE: &str = "TgWsProxy.exe";
-/// Портативные данные прокси (конфиг, лог). Лежат рядом с exe.
-pub(crate) const DATA: &str = "TgWsProxy_data";
-const PROC: &str = "TgWsProxy";
-const DEFAULT_PORT: u16 = 1443;
+const PY_VERSION: &str = "3.11.9";
+const GET_PIP: &str = "https://bootstrap.pypa.io/get-pip.py";
 
-/// Имя файла в релизе под архитектуру этого компьютера.
-pub(crate) fn release_asset_name() -> &'static str {
-    if cfg!(target_arch = "aarch64") { "TgWsProxy_windows_arm64.exe" } else { "TgWsProxy_windows.exe" }
+fn embed_url() -> String {
+    let arch = if cfg!(target_arch = "aarch64") { "arm64" } else { "amd64" };
+    format!("https://www.python.org/ftp/python/{PY_VERSION}/python-{PY_VERSION}-embed-{arch}.zip")
+}
+
+fn telegram_root() -> Result<PathBuf, String> {
+    Ok(crate::modules::modules_root()?.join("telegram"))
+}
+fn runtime_dir() -> Result<PathBuf, String> {
+    Ok(telegram_root()?.join("runtime"))
+}
+fn data_dir() -> Result<PathBuf, String> {
+    Ok(telegram_root()?.join("data"))
+}
+fn python_exe() -> Result<PathBuf, String> {
+    Ok(runtime_dir()?.join("python.exe"))
+}
+pub(crate) fn runtime_python() -> Option<PathBuf> {
+    python_exe().ok().filter(|p| p.is_file())
+}
+/// Имена в папке компонента, которые не являются версиями и не удаляются при обновлении.
+pub(crate) fn is_service_dir(name: &str) -> bool {
+    name == "runtime" || name == "data"
+}
+
+/// Все настройки прокси, как в окне настроек оригинального приложения.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(default)]
+pub struct Config {
+    pub host: String,
+    pub port: u16,
+    /// 32 символа hex
+    pub secret: String,
+    /// По одной строке `DC:IP`
+    pub dc_ip: String,
+    pub verbose: bool,
+    pub buf_kb: u32,
+    pub pool_size: u32,
+    pub log_max_mb: u32,
+    pub cfproxy: bool,
+    pub h2: bool,
+    pub cf_domain_on: bool,
+    pub cf_domain: String,
+    pub cf_worker_on: bool,
+    pub cf_worker: String,
+    pub force_test_dc: bool,
+    pub no_secure: bool,
+    pub fake_tls_domain: String,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            host: "127.0.0.1".into(),
+            port: 1443,
+            secret: String::new(),
+            dc_ip: "2:149.154.167.220\n4:149.154.167.220".into(),
+            verbose: false,
+            buf_kb: 256,
+            pool_size: 4,
+            log_max_mb: 5,
+            cfproxy: true,
+            h2: true,
+            cf_domain_on: false,
+            cf_domain: String::new(),
+            cf_worker_on: false,
+            cf_worker: String::new(),
+            force_test_dc: false,
+            no_secure: false,
+            fake_tls_domain: String::new(),
+        }
+    }
 }
 
 fn random_secret() -> String {
@@ -42,15 +117,163 @@ fn random_secret() -> String {
     out
 }
 
+fn domains(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for d in text.split(|c: char| c == ',' || c == ';' || c.is_whitespace()).filter(|d| !d.is_empty()) {
+        if !out.iter().any(|x| x.eq_ignore_ascii_case(d)) {
+            out.push(d.to_string());
+        }
+    }
+    out
+}
+
+fn valid_domain(d: &str) -> bool {
+    !d.is_empty() && d.len() <= 253 && d.contains('.') && d.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+}
+
+fn dc_lines(text: &str) -> Vec<String> {
+    text.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect()
+}
+
+/// Проверяет настройки и возвращает понятную ошибку.
+pub(crate) fn validate(c: &Config) -> Result<(), String> {
+    if c.host.parse::<std::net::IpAddr>().is_err() {
+        return Err("Адрес прослушивания должен быть IP-адресом, например 127.0.0.1.".into());
+    }
+    if c.port < 1024 {
+        return Err("Порт должен быть от 1024 до 65535.".into());
+    }
+    if c.secret.len() != 32 || !c.secret.chars().all(|x| x.is_ascii_hexdigit()) {
+        return Err("Секрет должен состоять из 32 символов 0-9 и a-f.".into());
+    }
+    for l in dc_lines(&c.dc_ip) {
+        let ok = l.split_once(':').map(|(d, ip)| d.parse::<u32>().is_ok() && ip.parse::<std::net::Ipv4Addr>().is_ok()).unwrap_or(false);
+        if !ok {
+            return Err(format!("Неверная строка DC: «{l}». Нужен формат номер:IPv4, например 2:149.154.167.220."));
+        }
+    }
+    if c.buf_kb < 4 || c.buf_kb > 65536 {
+        return Err("Размер буфера: от 4 до 65536 КБ.".into());
+    }
+    if c.pool_size > 64 {
+        return Err("Размер пула: от 0 до 64.".into());
+    }
+    if c.log_max_mb < 1 || c.log_max_mb > 1024 {
+        return Err("Размер лога: от 1 до 1024 МБ.".into());
+    }
+    for (on, text, name) in [(c.cf_domain_on, &c.cf_domain, "Свой домен Cloudflare"), (c.cf_worker_on, &c.cf_worker, "Домен Cloudflare Worker")] {
+        if on {
+            let list = domains(text);
+            if list.is_empty() {
+                return Err(format!("{name}: укажите домен или выключите пункт."));
+            }
+            if let Some(bad) = list.iter().find(|d| !valid_domain(d)) {
+                return Err(format!("{name}: «{bad}» не похоже на домен."));
+            }
+        }
+    }
+    let f = c.fake_tls_domain.trim();
+    if !f.is_empty() && !valid_domain(f) {
+        return Err("Домен Fake TLS: укажите обычный домен, например example.com.".into());
+    }
+    Ok(())
+}
+
+fn config_file() -> Result<PathBuf, String> {
+    Ok(data_dir()?.join("config.json"))
+}
+
+/// Читает настройки; недостающие поля берутся по умолчанию, секрет создаётся при первом обращении.
+pub(crate) fn load_config() -> Config {
+    let mut c: Config = config_file()
+        .ok()
+        .and_then(|p| fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    if c.secret.len() != 32 || !c.secret.chars().all(|x| x.is_ascii_hexdigit()) {
+        c.secret = random_secret();
+    }
+    c
+}
+
+fn save_config(c: &Config) -> Result<(), String> {
+    let dir = data_dir()?;
+    fs::create_dir_all(&dir).map_err(|e| format!("Не удалось создать {}: {e}", dir.display()))?;
+    fs::write(config_file()?, serde_json::to_string_pretty(c).map_err(|e| e.to_string())?).map_err(|e| format!("Не удалось записать настройки: {e}"))
+}
+
+/// Аргументы командной строки прокси по настройкам.
+pub(crate) fn build_args(c: &Config, log_file: &Path) -> Vec<String> {
+    let mut a: Vec<String> = vec!["-m".into(), "proxy.tg_ws_proxy".into()];
+    let mut push = |k: &str, v: Option<String>| {
+        a.push(k.to_string());
+        if let Some(v) = v {
+            a.push(v);
+        }
+    };
+    push("--host", Some(c.host.clone()));
+    push("--port", Some(c.port.to_string()));
+    push("--secret", Some(c.secret.clone()));
+    let dcs = dc_lines(&c.dc_ip);
+    if dcs.is_empty() {
+        push("--dc-ip", None);
+    }
+    for d in dcs {
+        push("--dc-ip", Some(d));
+    }
+    if c.verbose {
+        push("-v", None);
+    }
+    push("--buf-kb", Some(c.buf_kb.to_string()));
+    push("--pool-size", Some(c.pool_size.to_string()));
+    push("--log-file", Some(log_file.display().to_string()));
+    push("--log-max-mb", Some(c.log_max_mb.to_string()));
+    if !c.cfproxy {
+        push("--no-cfproxy", None);
+    }
+    if !c.h2 {
+        push("--no-h2", None);
+    }
+    if c.cf_domain_on {
+        for d in domains(&c.cf_domain) {
+            push("--cfproxy-domain", Some(d));
+        }
+    }
+    if c.cf_worker_on {
+        for d in domains(&c.cf_worker) {
+            push("--cfproxy-worker-domain", Some(d));
+        }
+    }
+    if c.no_secure {
+        push("--no-secure", None);
+    }
+    if !c.fake_tls_domain.trim().is_empty() {
+        push("--fake-tls-domain", Some(c.fake_tls_domain.trim().to_string()));
+    }
+    if c.force_test_dc {
+        push("--force-test-dc", None);
+    }
+    a
+}
+
+/// Ссылка для Telegram: обычная (dd) или с Fake TLS (ee).
+pub(crate) fn link(c: &Config) -> String {
+    let host = match c.host.as_str() {
+        "0.0.0.0" | "::" | "" => "127.0.0.1",
+        h => h,
+    };
+    let f = c.fake_tls_domain.trim();
+    let secret = if f.is_empty() { format!("dd{}", c.secret) } else { format!("ee{}{}", c.secret, hex::encode(f.as_bytes())) };
+    format!("tg://proxy?server={host}&port={}&secret={secret}", c.port)
+}
+
+// ───────── процесс ─────────
+
 fn our_pids() -> Vec<u32> {
-    crate::zapret::list_procs(PROC).into_iter().filter(|(_, p)| crate::zapret::is_ours(p)).map(|(id, _)| id).collect()
+    crate::zapret::list_procs("python").into_iter().filter(|(_, p)| crate::zapret::is_ours(p)).map(|(id, _)| id).collect()
 }
 
-fn foreign() -> Vec<String> {
-    crate::zapret::list_procs(PROC).into_iter().filter(|(_, p)| !crate::zapret::is_ours(p)).map(|(_, p)| p).collect()
-}
-
-/// Останавливает прокси Бунта (чужие копии не трогаем).
+/// Останавливает прокси Бунта (чужие python не трогаем).
 pub fn stop() {
     for pid in our_pids() {
         crate::zapret::kill_pid(pid);
@@ -80,180 +303,228 @@ fn is_enabled() -> bool {
         .unwrap_or(false)
 }
 
-fn config_path(dir: &Path) -> PathBuf {
-    dir.join(DATA).join("config.json")
-}
-
-fn read_config(dir: &Path) -> serde_json::Value {
-    fs::read_to_string(config_path(dir)).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_else(|| serde_json::json!({}))
-}
-
-/// Готовит папку данных: конфиг по умолчанию и отметку, что приветственное окно уже показано.
-/// Существующий конфиг не трогаем, кроме выключения самообновления: версиями управляет Бунт.
-pub(crate) fn prepare(dir: &Path) -> Result<(), String> {
-    let data = dir.join(DATA);
-    fs::create_dir_all(&data).map_err(|e| format!("Не удалось создать {}: {e}", data.display()))?;
-    let _ = fs::write(data.join(".first_run_done_mtproto"), b"");
-    let mut cfg = read_config(dir);
-    let obj = cfg.as_object_mut().ok_or("Конфиг прокси повреждён")?;
-    obj.entry("host").or_insert(serde_json::json!("127.0.0.1"));
-    obj.entry("port").or_insert(serde_json::json!(DEFAULT_PORT));
-    if obj.get("secret").and_then(|s| s.as_str()).map(|s| s.len() != 32).unwrap_or(true) {
-        obj.insert("secret".into(), serde_json::json!(random_secret()));
-    }
-    obj.insert("check_updates".into(), serde_json::json!(false));
-    obj.insert("autostart".into(), serde_json::json!(false));
-    fs::write(config_path(dir), serde_json::to_string_pretty(&cfg).map_err(|e| e.to_string())?)
-        .map_err(|e| format!("Не удалось записать конфиг: {e}"))
-}
-
-/// Читает данные прокси (порт, секрет) прежней версии, без логов.
-pub(crate) fn read_data(from: Option<&Path>) -> Vec<(String, Vec<u8>)> {
-    let Some(from) = from else { return Vec::new() };
-    let Ok(rd) = fs::read_dir(from.join(DATA)) else { return Vec::new() };
-    rd.flatten()
-        .filter_map(|e| {
-            let name = e.file_name().to_string_lossy().to_string();
-            if e.path().is_file() && !name.contains(".log") { Some((name, fs::read(e.path()).ok()?)) } else { None }
-        })
-        .collect()
-}
-
-pub(crate) fn restore_data(to: &Path, files: &[(String, Vec<u8>)]) {
-    if files.is_empty() {
-        return;
-    }
-    let d = to.join(DATA);
-    let _ = fs::create_dir_all(&d);
-    for (name, bytes) in files {
-        let _ = fs::write(d.join(name), bytes);
-    }
-}
-
 fn tail(path: &Path) -> String {
     let text = fs::read_to_string(path).unwrap_or_default();
-    let lines: Vec<&str> = text.lines().rev().take(4).collect();
+    let lines: Vec<&str> = text.lines().rev().filter(|l| !l.trim().is_empty()).take(4).collect();
     lines.into_iter().rev().collect::<Vec<_>>().join(" | ")
+}
+
+/// Файл python311._pth: у встраиваемого Python это единственный источник путей поиска модулей.
+fn write_pth(src: Option<&Path>) -> Result<(), String> {
+    let rt = runtime_dir()?;
+    let stem = format!("python{}", PY_VERSION.split('.').take(2).collect::<Vec<_>>().join(""));
+    let mut text = format!("{stem}.zip\n.\nLib\\site-packages\n");
+    if let Some(s) = src {
+        text.push_str(&s.display().to_string());
+        text.push('\n');
+    }
+    text.push_str("import site\n");
+    fs::write(rt.join(format!("{stem}._pth")), text).map_err(|e| format!("Не удалось настроить Python: {e}"))
 }
 
 fn start_blocking() -> Result<(), String> {
     let dir = crate::modules::active_dir("telegram")?;
-    let exe = dir.join(EXE);
-    if !exe.is_file() {
-        return Err("Файлы компонента не найдены. Переустановите его.".into());
+    let py = runtime_python().ok_or("Не найден встроенный Python. Переустановите компонент.")?;
+    if !dir.join("proxy").is_dir() {
+        return Err("Файлы прокси не найдены. Переустановите компонент.".into());
     }
     if running() {
         return Ok(());
     }
-    if !foreign().is_empty() {
-        return Err("Уже запущен другой TgWsProxy (не из Бунта). Закройте его в трее и повторите.".into());
-    }
-    prepare(&dir)?;
-    let mut cmd = Command::new(&exe);
-    cmd.arg("--portable").current_dir(&dir).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    let cfg = load_config();
+    validate(&cfg)?;
+    save_config(&cfg)?;
+    write_pth(Some(&dir))?;
+    let data = data_dir()?;
+    let log = data.join("proxy.log");
+    let err_log = data.join("stderr.log");
+    let _ = fs::remove_file(&err_log);
+    let errf = fs::File::create(&err_log).map_err(|e| e.to_string())?;
+    let mut cmd = Command::new(&py);
+    cmd.args(build_args(&cfg, &log))
+        .current_dir(&dir)
+        .env("PYTHONDONTWRITEBYTECODE", "1")
+        .env("PYTHONIOENCODING", "utf-8")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::from(errf));
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
-    cmd.spawn().map_err(|e| format!("Не удалось запустить прокси: {e}"))?;
-    // onefile-exe распаковывается секунду-две: ждём, пока процесс не закрепится
-    for _ in 0..12 {
+    let mut child = cmd.spawn().map_err(|e| format!("Не удалось запустить прокси: {e}"))?;
+    // Если порт занят или настройки неверны, прокси завершается за первые секунды
+    for _ in 0..6 {
         std::thread::sleep(Duration::from_millis(500));
-        if running() {
-            std::thread::sleep(Duration::from_millis(800));
-            if running() {
-                return Ok(());
-            }
-            break;
+        if let Ok(Some(code)) = child.try_wait() {
+            let msg = tail(&err_log);
+            let msg = if msg.is_empty() { tail(&log) } else { msg };
+            return Err(format!("Прокси закрылся (код {code}){}", if msg.is_empty() { String::new() } else { format!(": {msg}") }));
         }
     }
-    let log = tail(&dir.join(DATA).join("proxy.log"));
-    Err(if log.is_empty() { "Прокси сразу закрылся. Возможно, порт занят.".into() } else { format!("Прокси сразу закрылся: {log}") })
+    Ok(())
 }
 
-#[derive(serde::Serialize)]
-pub struct Status {
+// ───────── установка встроенного Python ─────────
+
+fn run_py(py: &Path, args: &[&str]) -> Result<(), String> {
+    let mut cmd = Command::new(py);
+    cmd.args(args).env("PYTHONDONTWRITEBYTECODE", "1").env("PIP_DISABLE_PIP_VERSION_CHECK", "1").stdin(Stdio::null());
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    let out = cmd.output().map_err(|e| format!("Не удалось запустить Python: {e}"))?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let text = String::from_utf8_lossy(&out.stderr).to_string();
+    let last: Vec<&str> = text.lines().rev().filter(|l| !l.trim().is_empty()).take(3).collect();
+    Err(last.into_iter().rev().collect::<Vec<_>>().join(" | "))
+}
+
+fn runtime_ready() -> bool {
+    match runtime_python() {
+        Some(py) => run_py(&py, &["-c", "import httpx, h2, certifi"]).is_ok(),
+        None => false,
+    }
+}
+
+/// Ставит встроенный Python и библиотеки прокси, если их ещё нет. Этапы показываются полосой загрузки.
+pub(crate) async fn ensure_runtime(app: &AppHandle) -> Result<(), String> {
+    if tauri::async_runtime::spawn_blocking(runtime_ready).await.map_err(|e| e.to_string())? {
+        return Ok(());
+    }
+    let rt = runtime_dir()?;
+    let _ = fs::remove_dir_all(&rt);
+    fs::create_dir_all(&rt).map_err(|e| format!("Нет прав на запись в {}: {e}", rt.display()))?;
+    let result: Result<(), String> = async {
+        crate::modules::progress(app, "telegram", 5, 100);
+        let zip = crate::modules::download_bytes(&embed_url()).await.map_err(|e| format!("Python: {e}"))?;
+        let zip_path = rt.join("python-embed.zip");
+        fs::write(&zip_path, &zip).map_err(|e| e.to_string())?;
+        crate::modules::extract_zip(&zip_path, &rt)?;
+        let _ = fs::remove_file(&zip_path);
+        write_pth(None)?;
+        crate::modules::progress(app, "telegram", 30, 100);
+        let gp = crate::modules::download_bytes(GET_PIP).await.map_err(|e| format!("pip: {e}"))?;
+        fs::write(rt.join("get-pip.py"), &gp).map_err(|e| e.to_string())?;
+        crate::modules::progress(app, "telegram", 40, 100);
+        let py = python_exe()?;
+        let app2 = app.clone();
+        tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+            run_py(&py, &["get-pip.py", "--no-warn-script-location"]).map_err(|e| format!("Не удалось установить pip: {e}"))?;
+            crate::modules::progress(&app2, "telegram", 60, 100);
+            run_py(&py, &["-m", "pip", "install", "--no-warn-script-location", "--only-binary=:all:", "httpx[http2]==0.28.1", "certifi"])
+                .map_err(|e| format!("Не удалось установить библиотеки: {e}"))?;
+            crate::modules::progress(&app2, "telegram", 90, 100);
+            // cryptography ускоряет шифрование; без неё прокси работает на встроенной замене
+            let _ = run_py(&py, &["-m", "pip", "install", "--no-warn-script-location", "--only-binary=:all:", "cryptography"]);
+            Ok(())
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        let _ = fs::remove_file(rt.join("get-pip.py"));
+        Ok(())
+    }
+    .await;
+    if result.is_err() {
+        let _ = fs::remove_dir_all(&rt);
+    }
+    result
+}
+
+// ───────── команды ─────────
+
+#[derive(Serialize)]
+pub struct Info {
     running: bool,
     enabled: bool,
-    port: u16,
     link: String,
+    config: Config,
 }
 
-fn status_now() -> Status {
-    let (port, link) = match crate::modules::active_dir("telegram") {
-        Ok(dir) => {
-            let cfg = read_config(&dir);
-            let port = cfg.get("port").and_then(|p| p.as_u64()).unwrap_or(DEFAULT_PORT as u64) as u16;
-            let host = match cfg.get("host").and_then(|h| h.as_str()) {
-                Some("0.0.0.0") | None | Some("") => "127.0.0.1".to_string(),
-                Some(h) => h.to_string(),
-            };
-            let secret = cfg.get("secret").and_then(|s| s.as_str()).unwrap_or("");
-            let link = if cfg.get("no_secure").and_then(|b| b.as_bool()).unwrap_or(false) {
-                format!("tg://socks?server={host}&port={port}")
-            } else if secret.is_empty() {
-                String::new()
-            } else {
-                format!("tg://proxy?server={host}&port={port}&secret=dd{secret}")
-            };
-            (port, link)
-        }
-        Err(_) => (DEFAULT_PORT, String::new()),
-    };
-    Status { running: running(), enabled: is_enabled(), port, link }
+fn info() -> Info {
+    let config = load_config();
+    Info { running: running(), enabled: is_enabled(), link: link(&config), config }
 }
 
-/// Запущен ли прокси, порт и ссылка для Telegram. Конфиг создаётся при первом обращении.
 #[tauri::command]
-pub async fn telegram_status() -> Result<Status, String> {
+pub async fn telegram_status() -> Result<Info, String> {
     tauri::async_runtime::spawn_blocking(|| {
-        if let Ok(dir) = crate::modules::active_dir("telegram") {
-            let _ = prepare(&dir);
+        if crate::modules::active_dir("telegram").is_ok() {
+            let _ = save_config(&load_config());
         }
-        status_now()
+        info()
     })
     .await
     .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn telegram_start() -> Result<Status, String> {
+pub async fn telegram_start() -> Result<Info, String> {
     tauri::async_runtime::spawn_blocking(|| {
         start_blocking()?;
         set_enabled(true);
-        Ok(status_now())
+        Ok(info())
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub async fn telegram_stop() -> Result<Status, String> {
+pub async fn telegram_stop() -> Result<Info, String> {
     tauri::async_runtime::spawn_blocking(|| {
         stop();
         set_enabled(false);
-        status_now()
+        info()
     })
     .await
     .map_err(|e| e.to_string())
 }
 
-/// Меняет порт прокси. Если он работает, перезапускает его.
-#[tauri::command]
-pub async fn telegram_set_port(port: u16) -> Result<Status, String> {
-    if port < 1024 {
-        return Err("Порт должен быть от 1024 до 65535.".into());
+fn restart_if_running() -> Result<(), String> {
+    if running() {
+        stop();
+        std::thread::sleep(Duration::from_millis(800));
+        start_blocking()?;
     }
+    Ok(())
+}
+
+/// Сохраняет настройки. Если прокси работает, перезапускает его с новыми.
+#[tauri::command]
+pub async fn telegram_config_set(config: Config) -> Result<Info, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let dir = crate::modules::active_dir("telegram")?;
-        prepare(&dir)?;
-        let mut cfg = read_config(&dir);
-        cfg["port"] = serde_json::json!(port);
-        fs::write(config_path(&dir), serde_json::to_string_pretty(&cfg).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-        if running() {
-            stop();
-            std::thread::sleep(Duration::from_millis(800));
-            start_blocking()?;
-        }
-        Ok(status_now())
+        let mut c = config;
+        c.fake_tls_domain = c.fake_tls_domain.trim().to_string();
+        validate(&c)?;
+        save_config(&c)?;
+        restart_if_running()?;
+        Ok(info())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Новый секрет (старая ссылка в Telegram перестанет работать).
+#[tauri::command]
+pub async fn telegram_new_secret() -> Result<Info, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let mut c = load_config();
+        c.secret = random_secret();
+        save_config(&c)?;
+        restart_if_running()?;
+        Ok(info())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Возвращает настройки по умолчанию, секрет остаётся прежним.
+#[tauri::command]
+pub async fn telegram_config_reset() -> Result<Info, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let secret = load_config().secret;
+        save_config(&Config { secret, ..Config::default() })?;
+        restart_if_running()?;
+        Ok(info())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -262,6 +533,10 @@ pub async fn telegram_set_port(port: u16) -> Result<Status, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn cfg() -> Config {
+        Config { secret: "00112233445566778899aabbccddeeff".into(), ..Config::default() }
+    }
 
     #[test]
     fn secret_is_32_hex_and_differs() {
@@ -272,21 +547,46 @@ mod tests {
     }
 
     #[test]
-    fn prepare_keeps_port_and_secret() {
-        let d = std::env::temp_dir().join(format!("bunt-tg-test-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
-        fs::create_dir_all(&d).unwrap();
-        prepare(&d).unwrap();
-        let first = read_config(&d);
-        assert_eq!(first["port"], 1443);
-        assert_eq!(first["check_updates"], false);
-        let mut c = first.clone();
-        c["port"] = serde_json::json!(2000);
-        fs::write(config_path(&d), c.to_string()).unwrap();
-        prepare(&d).unwrap();
-        let second = read_config(&d);
-        assert_eq!(second["port"], 2000);
-        assert_eq!(second["secret"], first["secret"]);
-        let _ = fs::remove_dir_all(&d);
+    fn default_args_match_cli() {
+        let a = build_args(&cfg(), Path::new("p.log"));
+        let s = a.join(" ");
+        assert!(s.starts_with("-m proxy.tg_ws_proxy --host 127.0.0.1 --port 1443 --secret 0011"));
+        assert!(s.contains("--dc-ip 2:149.154.167.220 --dc-ip 4:149.154.167.220"));
+        assert!(!s.contains("--no-cfproxy") && !s.contains("--no-h2") && !s.contains("-v "));
+    }
+
+    #[test]
+    fn switches_become_flags() {
+        let c = Config {
+            verbose: true, cfproxy: false, h2: false, no_secure: true, force_test_dc: true,
+            cf_domain_on: true, cf_domain: "a.example.com, b.example.com".into(),
+            cf_worker_on: true, cf_worker: "w.example.com".into(),
+            fake_tls_domain: "example.com".into(), dc_ip: String::new(), ..cfg()
+        };
+        validate(&c).unwrap();
+        let a = build_args(&c, Path::new("p.log"));
+        for f in ["-v", "--no-cfproxy", "--no-h2", "--no-secure", "--force-test-dc"] {
+            assert!(a.iter().any(|x| x == f), "{f}");
+        }
+        assert_eq!(a.iter().filter(|x| *x == "--cfproxy-domain").count(), 2);
+        assert!(a.windows(2).any(|w| w[0] == "--cfproxy-worker-domain" && w[1] == "w.example.com"));
+        assert!(a.windows(2).any(|w| w[0] == "--dc-ip" && w[1].starts_with('-')));
+    }
+
+    #[test]
+    fn validation_rejects_bad_values() {
+        assert!(validate(&Config { port: 80, ..cfg() }).is_err());
+        assert!(validate(&Config { secret: "zz".into(), ..cfg() }).is_err());
+        assert!(validate(&Config { dc_ip: "2:999.1.1.1".into(), ..cfg() }).is_err());
+        assert!(validate(&Config { host: "localhost".into(), ..cfg() }).is_err());
+        assert!(validate(&Config { cf_domain_on: true, ..cfg() }).is_err());
+        assert!(validate(&cfg()).is_ok());
+    }
+
+    #[test]
+    fn links() {
+        assert!(link(&cfg()).ends_with("&secret=dd00112233445566778899aabbccddeeff"));
+        let c = Config { fake_tls_domain: "a.io".into(), ..cfg() };
+        assert!(link(&c).ends_with("&secret=ee00112233445566778899aabbccddeeff612e696f"));
     }
 }

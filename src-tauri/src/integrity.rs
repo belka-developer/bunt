@@ -17,7 +17,7 @@ const MANIFEST: &str = ".bunt-manifest.json";
 /// Файлы, которые меняются при обычной работе, в хеши не входят.
 fn skipped(rel: &str) -> bool {
     let r = rel.replace('\\', "/").to_lowercase();
-    r == MANIFEST || r.starts_with("tgwsproxy_data/") || r == "winws.log" || r == "lists/ipset-all.txt" || r.ends_with("-user.txt")
+    r == MANIFEST || r.contains("__pycache__/") || r.ends_with(".pyc") || r == "winws.log" || r == "lists/ipset-all.txt" || r.ends_with("-user.txt")
 }
 
 fn hash_file(path: &Path) -> Result<String, String> {
@@ -187,8 +187,10 @@ fn run_check() -> Vec<Item> {
         any = true;
         let label = "Запрет Telegram";
         out.extend(check_files(label, &dir));
-        if let Some(i) = check_signature(label, crate::telegram::EXE, &dir.join(crate::telegram::EXE)) {
-            out.push(i);
+        if let Some(py) = crate::telegram::runtime_python() {
+            if let Some(i) = check_signature("Встроенный Python", "python.exe", &py) {
+                out.push(i);
+            }
         }
     }
     if !any {
@@ -267,7 +269,7 @@ async fn verify_one(id: &'static str, label: &str) -> Vec<Item> {
     let Some(release) = release else {
         return vec![item(&title, "warn", Some(format!("Не нашёл на GitHub релиз версии {version} или нет связи. Сверка не выполнена.")))];
     };
-    let (url, digest) = match crate::modules::pick_for(id, &release) {
+    let (url, digest) = match crate::modules::pick_archive(&release) {
         Ok(x) => x,
         Err(e) => return vec![item(&title, "warn", Some(e))],
     };
@@ -286,16 +288,7 @@ async fn verify_one(id: &'static str, label: &str) -> Vec<Item> {
         None => weak = true,
     }
 
-    let reference = match tauri::async_runtime::spawn_blocking(move || {
-        if id == "telegram" {
-            // в релизе один exe: эталон это его хеш
-            Ok(BTreeMap::from([(crate::telegram::EXE.to_string(), hex::encode(Sha256::digest(&bytes)))]))
-        } else {
-            hash_zip(&bytes)
-        }
-    })
-    .await
-    {
+    let reference = match tauri::async_runtime::spawn_blocking(move || hash_zip(&bytes)).await {
         Ok(Ok(r)) => r,
         Ok(Err(e)) => return vec![item(&title, "warn", Some(e))],
         Err(e) => return vec![item(&title, "warn", Some(e.to_string()))],
