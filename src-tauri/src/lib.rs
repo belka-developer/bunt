@@ -5,6 +5,7 @@
 //! Запуск запретов (winws), служба и компоненты появятся позже.
 
 mod modules;
+mod zapret;
 
 use serde::Serialize;
 use tauri::{
@@ -144,6 +145,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
 
 pub fn run() {
     tauri::Builder::default()
+        .manage(zapret::Zapret::default())
         // Второй запуск просто поднимает уже открытое окно.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_main(app);
@@ -156,12 +158,22 @@ pub fn run() {
             modules::installed_components,
             modules::modules_dir,
             modules::latest_component,
-            modules::install_component
+            modules::install_component,
+            zapret::zapret_strategies,
+            zapret::zapret_start,
+            zapret::zapret_stop,
+            zapret::zapret_running
         ])
         .setup(|app| {
             setup_tray(app)?;
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("не удалось запустить Бунт");
+        .build(tauri::generate_context!())
+        .expect("не удалось запустить Бунт")
+        .run(|app, event| {
+            // При выходе останавливаем запущенный запрет, чтобы winws не остался висеть.
+            if let tauri::RunEvent::Exit = event {
+                app.state::<zapret::Zapret>().stop();
+            }
+        });
 }

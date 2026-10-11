@@ -27,7 +27,7 @@ fn source(id: &str) -> Result<(&'static str, &'static str), String> {
     }
 }
 
-fn modules_root() -> Result<PathBuf, String> {
+pub fn modules_root() -> Result<PathBuf, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let dir = exe.parent().ok_or("Не удалось определить папку Бунта")?;
     Ok(dir.join("modules"))
@@ -242,4 +242,12 @@ fn extract_zip(zip_path: &Path, out: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Папка активной версии компонента (`modules\<id>\<версия>`).
+pub fn active_dir(id: &str) -> Result<PathBuf, String> {
+    let root = modules_root()?;
+    let version = read_state(&root).get(id).cloned().ok_or("Компонент не установлен")?;
+    let dir = root.join(id).join(version);
+    if dir.is_dir() { Ok(dir) } else { Err("Файлы компонента не найдены. Установите его заново.".into()) }
 }

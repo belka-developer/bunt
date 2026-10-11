@@ -316,6 +316,7 @@
       if (!quiet) { toast(id === 'vless' ? 'Сначала выберите сервер VLESS.' : 'Сначала импортируйте или выберите профиль WireGuard.', 'warn'); go(id); }
       return false;
     }
+    if (inTauri && id === 'discord') { realDiscord(on, quiet); return true; }
     S.on[id] = on;
     var n = SVC[id].name;
     if (on) {
@@ -326,6 +327,29 @@
     }
     renderAll();
     return true;
+  }
+  /* настоящий запуск и остановка winws */
+  var zBusy = false;
+  function realDiscord(on, quiet) {
+    if (zBusy) return;
+    zBusy = true;
+    var d = S.discord, n = SVC.discord.name;
+    var p = on
+      ? (addLog({ svc: n, m: 'Запуск winws со стратегией ' + d.strategy + '…' }),
+         T.core.invoke('zapret_start', { strategy: d.strategy, game: d.game ? 'all' : 'disabled', ipset: d.ipset }))
+      : T.core.invoke('zapret_stop');
+    p.then(function () {
+      S.on.discord = on;
+      addLog(on ? { m: 'winws запущен. Запрет работает.', ok: true } : { svc: n, m: 'Остановлено.' });
+    }).catch(function (err) {
+      S.on.discord = false;
+      addLog({ svc: n, m: 'Ошибка: ' + err });
+      if (!quiet) toast(String(err).slice(0, 200), 'warn');
+    }).then(function () { zBusy = false; renderAll(); });
+  }
+  function restartDiscord() {
+    if (!inTauri || !S.on.discord) return;
+    realDiscord(true, false);
   }
   function stopAll() { IDS.forEach(function (id) { setSvc(id, false, true); }); }
   function toggleAll() {
@@ -344,6 +368,7 @@
     if (S.on.discord) addLog({ svc: 'Zapret (Discord)', m: 'Перезапуск службы со стратегией ' + name + '…' });
     toast('Выбрана стратегия: ' + name);
     renderAll();
+    restartDiscord();
   }
   function autotest() {
     if (testing) return;
@@ -678,6 +703,7 @@
       if (d.sw === 'discord.autoupd') toast(S.discord.autoupd ? 'Автопроверка включена' : 'Автопроверка выключена');
       renderDiscord();
       sync();
+      if (d.sw === 'discord.game') restartDiscord();
       return;
     }
     var seg = el.closest('[data-seg]');
@@ -685,6 +711,7 @@
       set(seg.dataset.seg, d.v);
       if (seg.dataset.seg === 'discord.ipset') addLog({ svc: 'Zapret (Discord)', m: 'IPSet Filter: ' + d.v + '.' });
       renderAll();
+      if (seg.dataset.seg === 'discord.ipset') restartDiscord();
       return;
     }
     if (d.pick) {

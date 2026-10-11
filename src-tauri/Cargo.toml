@@ -1,6 +1,6 @@
 [package]
 name = "bunt"
-version = "0.1.0"
+version = "0.1.1"
 description = "Бунт — единый центр сетевых инструментов"
 authors = ["belka-developer"]
 license = "GPL-3.0-or-later"
@@ -15,6 +15,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
+tokio = { version = "1", features = ["time"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
