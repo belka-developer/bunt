@@ -1,0 +1,36 @@
+name: Сборка для проверки
+
+# Запускается вручную: Actions → «Сборка для проверки» → Run workflow.
+# Собирает установщик без подписи обновлений, поэтому ключи не нужны.
+# Готовый exe появится внизу страницы запуска, в разделе Artifacts.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+
+      - name: Установить зависимости
+        run: npm install
+
+      - name: Собрать установщик
+        run: npm run tauri build -- --config src-tauri/tauri.nosign.conf.json
+
+      - name: Сохранить установщик
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bunt-setup
+          path: |
+            target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error

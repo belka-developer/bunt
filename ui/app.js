@@ -20,6 +20,7 @@
   var inTauri = !!(T && T.core && T.core.invoke);
   var appMode = inTauri || /[?&]app\b/.test(location.search);
   if (appMode) document.body.classList.add('app');
+  var installed = function (id) { var c = S.comps.filter(function (x) { return x.id === id; })[0]; return !!(c && c.cur); };
   var live = function () { return S.comps.filter(function (c) { return !SOON[c.id]; }); };
   var PAGES = ['home', 'discord', 'telegram', 'vless', 'wg', 'security', 'settings'];
   var SUFFIX = ['', 'ALT'];
@@ -35,7 +36,7 @@
 
   var S = {
     page: 'home',
-    on: { discord: true, telegram: false, vless: false, wg: false },
+    on: { discord: false, telegram: false, vless: false, wg: false },
     discord: { mode: 'auto', strategy: 'general (ALT2)', game: false, ipset: 'none', lastTest: 'сегодня, 14:32', service: true, hosts: 'old', fake: 'tls_clienthello_www_google_com.bin', autoupd: true, ipsetUpdated: 'сегодня, 09:12' },
     telegram: { port: '1080' },
     lists: {
@@ -64,8 +65,8 @@
     ],
     comps: [
       { id: 'app', name: 'Бунт', cur: '0.1.0', next: null, cls: 'b-app', icon: 'mark', size: '8.4 МБ', src: 'belka-developer/bunt (GitHub)', sha: 'a91c07d2e5b3…4f60', notes: [], busy: null },
-      { id: 'discord', name: 'Zapret (Discord)', cur: '1.2.3', next: null, cls: 'b-discord', icon: 'chat', size: '12.4 МБ', src: 'Flowseal/zapret-discord-youtube (GitHub)', sha: '3f8e2c4d6a1b…9e07', notes: [], busy: null },
-      { id: 'telegram', name: 'Zapret (Telegram)', cur: '1.2.3', next: '1.2.4', cls: 'b-telegram', icon: 'plane', size: '3.1 МБ', src: 'Flowseal/tg-ws-proxy (GitHub)', sha: '7be04a19c3d8…12ff', notes: ['Исправлена ошибка с подключением к новым серверам', 'Улучшена стабильность работы', 'Обновлены конфигурации'], busy: null },
+      { id: 'discord', name: 'Zapret (Discord)', cur: null, latest: '1.2.3', next: null, cls: 'b-discord', icon: 'chat', size: '12.4 МБ', src: 'Flowseal/zapret-discord-youtube (GitHub)', sha: '3f8e2c4d6a1b…9e07', notes: [], busy: null },
+      { id: 'telegram', name: 'Zapret (Telegram)', cur: null, latest: '1.2.4', next: null, cls: 'b-telegram', icon: 'plane', size: '3.1 МБ', src: 'Flowseal/tg-ws-proxy (GitHub)', sha: '7be04a19c3d8…12ff', notes: [], busy: null },
       { id: 'vless', name: 'VLESS', cur: '2.0.1', next: null, cls: 'b-vless', icon: 'net', size: '21.7 МБ', src: 'GitHub Releases', sha: 'c20d5e71b8a4…03aa', notes: [], busy: null },
       { id: 'wg', name: 'WireGuard', cur: '0.5.3', next: null, cls: 'b-wg', icon: 'vpn', size: '4.6 МБ', src: 'GitHub Releases', sha: '5d1f9a3e07c2…8b11', notes: [], busy: null }
     ],
@@ -122,7 +123,11 @@
     var host = $('#cards');
     if (!host) return;
     host.innerHTML = IDS.map(function (id) {
-      var on = S.on[id], s = SVC[id];
+      var on = S.on[id], s = SVC[id], ni = !SOON[id] && !installed(id);
+      if (ni) return '<article class="card noinst"><div class="card-top"><button class="card-open" data-go="' + id + '"><span class="badge ' + s.cls + '">' + ico(s.icon) + '</span>' +
+        '<span class="who"><span class="card-name">' + s.name + '</span><span class="state">Не установлено</span></span></button>' +
+        '<button class="btn sm primary" data-act="installComp" data-arg="' + id + '">Установить</button></div>' +
+        '<div class="meta"><div>Версия на GitHub: <b>' + esc(comp(id).latest) + '</b></div></div></article>';
       return '<article class="card ' + (on ? 'on' : '') + '">' +
         '<div class="card-top"><button class="card-open" data-go="' + id + '"><span class="badge ' + s.cls + '">' + ico(s.icon) + '</span>' +
         '<span class="who"><span class="card-name">' + s.name + '</span><span class="state ' + (on ? 'on' : '') + '">' + (on ? '<i class="dot"></i>Активен' : 'Отключен') + '</span></span></button>' +
@@ -139,6 +144,20 @@
     });
   }
 
+  function renderInstall() {
+    ['discord', 'telegram'].forEach(function (id) {
+      var c = comp(id), ok = installed(id), box = $('#inst-' + id), body = document.querySelector('[data-body="' + id + '"]');
+      if (!box || !body) return;
+      box.hidden = ok; body.hidden = !ok;
+      var sw = document.querySelector('.head-sw [data-svc="' + id + '"]');
+      if (sw) sw.parentNode.hidden = !ok;
+      document.querySelector('[data-latest="' + id + '"]').textContent = c.latest || '…';
+      $('#instAct-' + id).innerHTML = c.busy != null
+        ? '<span class="bar-track"><span class="bar-fill" style="width:' + c.busy + '%"></span></span><div class="note mt-s">Скачиваем и проверяем файлы… ' + c.busy + '%</div>'
+        : '<button class="btn primary" data-act="installComp" data-arg="' + id + '">' + ico('plus') + 'Установить</button>';
+    });
+  }
+
   function renderTray() {
     var items = [
       { i: 'home', t: 'Открыть', go: 'home' },
@@ -151,6 +170,7 @@
     }).join('');
     h += IDS.map(function (id) {
       if (SOON[id]) return '<li><button disabled>' + ico(SVC[id].icon) + SVC[id].name + '<span class="soon-tag">скоро</span></button></li>';
+      if (!installed(id)) return '<li><button data-go="' + id + '">' + ico(SVC[id].icon) + SVC[id].name + '<span class="soon-tag">не установлено</span></button></li>';
       return '<li><button data-svc="' + id + '">' + ico(SVC[id].icon) + SVC[id].name + (S.on[id] ? ico('check', 'chk') : '') + '</button></li>';
     }).join('');
     h += '<li class="sep"></li>' +
@@ -233,13 +253,14 @@
     ve.hidden = !S.verErr;
     ve.textContent = S.verErr ? 'Не удалось проверить обновления: ' + S.verErr : '';
     $('#verList').innerHTML = live().map(function (c) {
-      var latest = c.next || c.cur, stat;
+      var latest = c.next || c.cur || c.latest, stat;
       if (c.busy != null) stat = '<span class="bar-track" style="width:110px"><span class="bar-fill" style="width:' + c.busy + '%"></span></span>';
+      else if (!c.cur) stat = '<button class="btn sm primary" data-act="installComp" data-arg="' + c.id + '">Установить</button>';
       else if (c.next) stat = '<button class="btn sm primary" data-act="updateOne" data-arg="' + c.id + '">Обновить</button>';
       else stat = '<span class="tag ok">Актуально</span>';
       return '<div class="vrow"><div class="vwho"><span class="badge sm ' + c.cls + '">' + ico(c.icon) + '</span>' +
         '<span class="pn"><b>' + c.name + (appMode && c.demo ? ' <span class="tag">демо</span>' : '') + '</b><small>' + esc(c.src) + '</small></span></div>' +
-        '<div class="vcell"><small>Установлено</small><span class="v">' + c.cur + '</span></div>' +
+        '<div class="vcell"><small>Установлено</small><span class="v">' + (c.cur || 'Не установлено') + '</span></div>' +
         '<div class="vcell"><small>На GitHub</small><span class="v ' + (c.next ? 'new' : '') + '">' + latest + '</span></div>' +
         '<div class="vstat">' + stat + '</div></div>';
     }).join('');
@@ -271,7 +292,7 @@
 
   function renderAll() {
     renderSide(); renderCards(); renderTray(); renderHeads(); renderLog();
-    renderDiscord(); renderTelegram(); renderProfiles('vless'); renderProfiles('wg');
+    renderInstall(); renderDiscord(); renderTelegram(); renderProfiles('vless'); renderProfiles('wg');
     renderVersions(); renderSecurity(); sync();
   }
 
@@ -287,6 +308,10 @@
   function setSvc(id, on, quiet) {
     if (SOON[id]) { if (!quiet) toast('Этот раздел скоро появится.', 'warn'); return false; }
     if (S.on[id] === on) return false;
+    if (on && !installed(id)) {
+      if (!quiet) { toast('Сначала установите компонент.', 'warn'); go(id); }
+      return false;
+    }
     if (on && (id === 'vless' || id === 'wg') && !S.sel[id]) {
       if (!quiet) { toast(id === 'vless' ? 'Сначала выберите сервер VLESS.' : 'Сначала импортируйте или выберите профиль WireGuard.', 'warn'); go(id); }
       return false;
@@ -441,6 +466,23 @@
       renderAll();
     });
   }
+  function installComp(id) {
+    var c = comp(id);
+    if (!c || c.cur || c.busy != null) return;
+    c.busy = 0;
+    addLog({ svc: c.name, m: 'Загрузка версии ' + c.latest + ' из ' + c.src.replace(/ \(GitHub\)/, '') + '…' });
+    renderAll();
+    var iv = setInterval(function () {
+      c.busy += 10;
+      if (c.busy >= 100) {
+        clearInterval(iv);
+        c.cur = c.latest; c.busy = null;
+        addLog({ svc: c.name, m: 'Установлено: ' + c.cur + '. Хеш проверен.', ok: true });
+        toast(c.name + ' установлен');
+      }
+      renderAll();
+    }, 180);
+  }
   function updateOne(id) {
     var c = S.comps.filter(function (x) { return x.id === id; })[0];
     if (!c || !c.next || c.busy != null) return;
@@ -576,6 +618,7 @@
     pingAll: function (a) { pingAll(a); },
     pickWg: function () { $('#wgFile').click(); },
     updateOne: updateOne,
+    installComp: installComp,
     runSec: runSec,
     saveSettings: function () { toast('Настройки сохранены'); },
     exitApp: function () { toast('В настоящем приложении здесь закроется Бунт.'); },

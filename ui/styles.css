@@ -303,3 +303,12 @@ body.app .bar, body.app .tray-wrap, body.app .titlebar { display: none; }
 body.app .desk { display: block; }
 body.app .window { border: 0; border-radius: 0; box-shadow: none; min-height: 100vh; }
 body.app .shell { min-height: 100vh; }
+
+/* компонент не установлен */
+.install { display: grid; justify-items: center; text-align: center; gap: 12px; padding: 48px 20px; border-style: dashed; border-color: var(--line-2); }
+.install .badge { width: 56px; height: 56px; border-radius: 16px; opacity: 0.9; }
+.install h3 { font-size: 18px; margin: 0; }
+.install .sub { margin: 0; max-width: 460px; }
+.install .inst-meta { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; color: var(--muted); font-size: 12px; }
+.install .bar-track { width: 260px; }
+.card.noinst .meta { color: var(--muted); }
