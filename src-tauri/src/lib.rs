@@ -5,11 +5,13 @@
 //! Запуск запретов (winws), служба и компоненты появятся позже.
 
 mod modules;
+mod settings;
 mod zapret;
 
 use serde::Serialize;
+use std::sync::Mutex;
 use tauri::{
-    menu::{Menu, MenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager,
 };
@@ -106,24 +108,47 @@ fn show_main(app: &AppHandle) {
     }
 }
 
+/// Пункт меню трея с состоянием запрета Discord (текст меняется из интерфейса).
+struct TrayItems {
+    discord: Mutex<Option<MenuItem<tauri::Wry>>>,
+}
+
+/// Открывает Бунт на нужной вкладке.
+fn go_page(app: &AppHandle, page: &str) {
+    show_main(app);
+    let _ = app.emit("navigate", page);
+}
+
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Открыть", true, None::<&str>)?;
-    let check = MenuItem::with_id(app, "check", "Проверить обновления", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "Открыть Бунт", true, None::<&str>)?;
+    let discord = MenuItem::with_id(app, "go:discord", "Запрет Discord и YouTube", true, None::<&str>)?;
+    let telegram = MenuItem::with_id(app, "go:telegram", "Запрет Telegram · скоро", false, None::<&str>)?;
+    let vless = MenuItem::with_id(app, "go:vless", "VLESS · скоро", false, None::<&str>)?;
+    let wg = MenuItem::with_id(app, "go:wg", "WireGuard · скоро", false, None::<&str>)?;
+    let updates = MenuItem::with_id(app, "go:updates", "Обновления", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "go:settings", "Настройки", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &check, &quit])?;
+    let sep1 = PredefinedMenuItem::separator(app)?;
+    let sep2 = PredefinedMenuItem::separator(app)?;
+    let menu = Menu::with_items(
+        app,
+        &[&open, &sep1, &discord, &telegram, &vless, &wg, &sep2, &updates, &settings, &quit],
+    )?;
+    *app.state::<TrayItems>().discord.lock().unwrap() = Some(discord);
 
     let mut builder = TrayIconBuilder::new()
         .menu(&menu)
         .show_menu_on_left_click(false)
         .tooltip("Бунт")
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "open" => show_main(app),
-            "check" => {
+        .on_menu_event(|app, event| {
+            let id = event.id.as_ref();
+            if id == "open" {
                 show_main(app);
-                let _ = app.emit("tray-check-update", ());
+            } else if id == "quit" {
+                app.exit(0);
+            } else if let Some(page) = id.strip_prefix("go:") {
+                go_page(app, page);
             }
-            "quit" => app.exit(0),
-            _ => {}
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
@@ -143,9 +168,19 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Интерфейс сообщает, включён ли запрет, и подпись пункта в трее меняется.
+#[tauri::command]
+fn tray_set_discord(state: tauri::State<'_, TrayItems>, on: bool) {
+    if let Some(item) = state.discord.lock().unwrap().as_ref() {
+        let _ = item.set_text(if on { "Запрет Discord и YouTube · включён" } else { "Запрет Discord и YouTube · выключен" });
+    }
+}
+
 pub fn run() {
     tauri::Builder::default()
         .manage(zapret::Zapret::default())
+        .manage(settings::SettingsState(Mutex::new(settings::Settings::default())))
+        .manage(TrayItems { discord: Mutex::new(None) })
         // Второй запуск просто поднимает уже открытое окно.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_main(app);
@@ -159,6 +194,11 @@ pub fn run() {
             modules::modules_dir,
             modules::latest_component,
             modules::install_component,
+            modules::release_notes,
+            settings::settings_get,
+            settings::settings_set,
+            settings::open_url,
+            tray_set_discord,
             zapret::zapret_strategies,
             zapret::zapret_start,
             zapret::zapret_stop,
@@ -166,8 +206,32 @@ pub fn run() {
             zapret::zapret_foreign,
             zapret::zapret_take_over
         ])
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+            let tray = window.state::<settings::SettingsState>().0.lock().unwrap().tray;
+            match event {
+                // Закрытие окна прячет Бунт в трей (выход есть в меню трея)
+                tauri::WindowEvent::CloseRequested { api, .. } if tray => {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+                // Сворачивание тоже уводит в трей
+                tauri::WindowEvent::Resized(_) if tray && window.is_minimized().unwrap_or(false) => {
+                    let _ = window.hide();
+                }
+                _ => {}
+            }
+        })
         .setup(|app| {
+            let s = settings::load(app.handle());
+            *app.state::<settings::SettingsState>().0.lock().unwrap() = s;
             setup_tray(app)?;
+            // С параметром --hidden (автозапуск) окно не показываем, Бунт сидит в трее
+            if !std::env::args().any(|a| a == "--hidden") {
+                show_main(app.handle());
+            }
             Ok(())
         })
         .build(tauri::generate_context!())

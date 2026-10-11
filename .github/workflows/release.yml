@@ -33,6 +33,21 @@ jobs:
             exit 1
           fi
 
+      - name: Описание релиза из CHANGELOG.md
+        id: notes
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VER="${TAG#v}"
+          awk -v v="$VER" '/^## /{p=($2==v); next} p' CHANGELOG.md | sed -e '/./,$!d' > notes.md
+          if [ ! -s notes.md ]; then echo "Изменения не описаны." > notes.md; fi
+          {
+            echo "body<<NOTES_EOF"
+            cat notes.md
+            echo "NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Установить зависимости
         run: npm install
 
@@ -45,6 +60,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Бунт ${{ github.ref_name }}'
-          releaseBody: 'Установщик Бунта для Windows. Установленное приложение обновится по кнопке «Проверить» на главной.'
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false

@@ -52,6 +52,12 @@ fn write_state(root: &Path, state: &State) -> Result<(), String> {
 #[derive(Deserialize)]
 struct Release {
     tag_name: String,
+    #[serde(default)]
+    body: Option<String>,
+    #[serde(default)]
+    html_url: Option<String>,
+    #[serde(default)]
+    published_at: Option<String>,
     zipball_url: Option<String>,
     #[serde(default)]
     assets: Vec<Asset>,
@@ -88,6 +94,10 @@ fn client() -> Result<reqwest::Client, String> {
 
 async fn fetch_release(id: &str) -> Result<Release, String> {
     let (owner, repo) = source(id)?;
+    fetch_release_of(owner, repo).await
+}
+
+async fn fetch_release_of(owner: &str, repo: &str) -> Result<Release, String> {
     let url = format!("https://api.github.com/repos/{owner}/{repo}/releases/latest");
     let resp = client()?
         .get(url)
@@ -250,4 +260,28 @@ pub fn active_dir(id: &str) -> Result<PathBuf, String> {
     let version = read_state(&root).get(id).cloned().ok_or("Компонент не установлен")?;
     let dir = root.join(id).join(version);
     if dir.is_dir() { Ok(dir) } else { Err("Файлы компонента не найдены. Установите его заново.".into()) }
+}
+
+#[derive(Serialize)]
+pub struct Notes {
+    version: String,
+    body: String,
+    url: String,
+    published: Option<String>,
+}
+
+/// Описание последнего релиза («что нового»): для самого Бунта и для компонентов.
+#[tauri::command]
+pub async fn release_notes(id: String) -> Result<Notes, String> {
+    let (owner, repo) = match id.as_str() {
+        "app" => ("belka-developer", "bunt"),
+        other => source(other)?,
+    };
+    let rel = fetch_release_of(owner, repo).await?;
+    Ok(Notes {
+        version: clean_version(&rel.tag_name),
+        body: rel.body.unwrap_or_default(),
+        url: rel.html_url.unwrap_or_else(|| format!("https://github.com/{owner}/{repo}/releases")),
+        published: rel.published_at,
+    })
 }

@@ -284,22 +284,37 @@ pub async fn zapret_start(
     }
     *state.0.lock().unwrap() = Some(child);
     if let Ok(root) = crate::modules::modules_root() {
-        let last = serde_json::json!({ "strategy": strategy, "game": game, "ipset": ipset });
+        let last = serde_json::json!({ "strategy": strategy, "game": game, "ipset": ipset, "enabled": true });
         let _ = fs::write(root.join("zapret.json"), last.to_string());
     }
     Ok(())
+}
+
+/// Запоминает, включил ли пользователь запрет: при следующем запуске Бунта он поднимется сам.
+fn set_enabled(on: bool) {
+    let Ok(root) = crate::modules::modules_root() else { return };
+    let path = root.join("zapret.json");
+    let mut v: serde_json::Value = fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    v["enabled"] = serde_json::Value::Bool(on);
+    let _ = fs::write(path, v.to_string());
 }
 
 /// Останавливает запрет.
 #[tauri::command]
 pub async fn zapret_stop(state: tauri::State<'_, Zapret>) -> Result<(), String> {
     state.stop();
+    set_enabled(false);
     Ok(())
 }
 
 #[derive(serde::Serialize)]
 pub struct Status {
     running: bool,
+    /// Пользователь оставил запрет включённым при последнем выходе
+    enabled: bool,
     strategy: Option<String>,
     game: Option<String>,
     ipset: Option<String>,
@@ -323,7 +338,7 @@ pub async fn zapret_status(state: tauri::State<'_, Zapret>) -> Result<Status, St
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default();
     let get = |k: &str| last.get(k).and_then(|v| v.as_str()).map(String::from);
-    Ok(Status { running, strategy: get("strategy"), game: get("game"), ipset: get("ipset") })
+    Ok(Status { running, enabled: last.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false), strategy: get("strategy"), game: get("game"), ipset: get("ipset") })
 }
 
 #[derive(serde::Serialize)]

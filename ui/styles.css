@@ -326,3 +326,17 @@ body.app .view { height: 100vh; overflow-y: auto; }
   body.app .side { height: auto; }
   body.app .view { height: auto; overflow: visible; }
 }
+
+/* ссылки в «О программе», вкладка обновлений, заметки о релизе */
+.links .link { background: none; border: 0; padding: 0; color: var(--info); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.links .link:hover { color: var(--accent); }
+.nav-dot { margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+.upd-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; border-color: rgba(47, 227, 165, 0.35); background: var(--accent-soft); }
+.upd-banner b { font-weight: 600; }
+.notes-panel { margin-bottom: 14px; }
+.notes-panel .panel-head .ver { color: var(--muted); font-family: var(--font-mono); font-size: 12px; }
+.notes { max-height: 280px; overflow: auto; font-size: 13px; line-height: 1.6; color: var(--fg); display: grid; gap: 6px; }
+.notes h4 { margin: 8px 0 0; font-size: 13px; font-weight: 600; }
+.notes ul { margin: 0; padding-left: 18px; display: grid; gap: 3px; }
+.notes p { margin: 0; color: var(--muted); }
+.notes-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; }

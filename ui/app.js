@@ -22,7 +22,7 @@
   if (appMode) document.body.classList.add('app');
   var installed = function (id) { var c = S.comps.filter(function (x) { return x.id === id; })[0]; return !!(c && c.cur); };
   var live = function () { return S.comps.filter(function (c) { return !SOON[c.id]; }); };
-  var PAGES = ['home', 'discord', 'telegram', 'vless', 'wg', 'security', 'settings'];
+  var PAGES = ['home', 'discord', 'telegram', 'vless', 'wg', 'security', 'updates', 'settings'];
   var SUFFIX = ['', 'ALT'];
   for (var q = 2; q <= 13; q++) SUFFIX.push('ALT' + q);
   SUFFIX = SUFFIX.concat(['EXP', 'FAKE TLS AUTO', 'FAKE TLS AUTO ALT', 'FAKE TLS AUTO ALT2', 'FAKE TLS AUTO ALT3', 'SIMPLE FAKE', 'SIMPLE FAKE ALT', 'SIMPLE FAKE ALT2']);
@@ -64,8 +64,8 @@
       { t: '14:45:03', m: 'Проверка обновлений — доступно обновление Zapret (Telegram).' }
     ],
     comps: [
-      { id: 'app', name: 'Бунт', cur: '0.1.0', next: null, cls: 'b-app', icon: 'mark', size: '8.4 МБ', src: 'belka-developer/bunt (GitHub)', sha: 'a91c07d2e5b3…4f60', notes: [], busy: null },
-      { id: 'discord', name: 'Zapret (Discord)', cur: null, latest: '1.2.3', next: null, cls: 'b-discord', icon: 'chat', size: '12.4 МБ', src: 'Flowseal/zapret-discord-youtube (GitHub)', sha: '3f8e2c4d6a1b…9e07', notes: [], busy: null },
+      { id: 'app', name: 'Бунт', cur: '0.1.0', next: null, checked: true, rel: { version: '0.1.0', url: 'https://github.com/belka-developer/bunt/releases', body: '## Первая версия\n- Запрет для Discord и YouTube на основе zapret-discord-youtube\n- Обновление Бунта одной кнопкой\n- Значок в трее' }, cls: 'b-app', icon: 'mark', size: '8.4 МБ', src: 'belka-developer/bunt (GitHub)', sha: 'a91c07d2e5b3…4f60', notes: [], busy: null },
+      { id: 'discord', name: 'Zapret (Discord)', checked: true, cur: null, latest: '1.2.3', next: null, cls: 'b-discord', icon: 'chat', size: '12.4 МБ', src: 'Flowseal/zapret-discord-youtube (GitHub)', sha: '3f8e2c4d6a1b…9e07', notes: [], busy: null },
       { id: 'telegram', name: 'Zapret (Telegram)', cur: null, latest: '1.2.4', next: null, cls: 'b-telegram', icon: 'plane', size: '3.1 МБ', src: 'Flowseal/tg-ws-proxy (GitHub)', sha: '7be04a19c3d8…12ff', notes: [], busy: null },
       { id: 'vless', name: 'VLESS', cur: '2.0.1', next: null, cls: 'b-vless', icon: 'net', size: '21.7 МБ', src: 'GitHub Releases', sha: 'c20d5e71b8a4…03aa', notes: [], busy: null },
       { id: 'wg', name: 'WireGuard', cur: '0.5.3', next: null, cls: 'b-wg', icon: 'vpn', size: '4.6 МБ', src: 'GitHub Releases', sha: '5d1f9a3e07c2…8b11', notes: [], busy: null }
@@ -159,24 +159,22 @@
   }
 
   function renderTray() {
-    var items = [
-      { i: 'home', t: 'Открыть', go: 'home' },
-      { i: 'power', t: 'ВКЛ/ВЫКЛ все', act: 'toggleAll' },
-      { sep: 1 }
+    var rows = [
+      ['mark', 'Открыть Бунт', 'home'],
+      null,
+      ['chat', 'Запрет Discord и YouTube' + (installed('discord') ? (S.on.discord ? ' · включён' : ' · выключен') : ''), 'discord'],
+      ['plane', 'Запрет Telegram · скоро', null],
+      ['net', 'VLESS · скоро', null],
+      ['vpn', 'WireGuard · скоро', null],
+      null,
+      ['download', 'Обновления', 'updates'],
+      ['sliders', 'Настройки', 'settings']
     ];
-    var h = items.map(function (it) {
-      if (it.sep) return '<li class="sep"></li>';
-      return '<li><button ' + (it.go ? 'data-go="' + it.go + '"' : 'data-act="' + it.act + '"') + '>' + ico(it.i) + it.t + '</button></li>';
+    var h = rows.map(function (r) {
+      if (!r) return '<li class="sep"></li>';
+      return '<li><button ' + (r[2] ? 'data-go="' + r[2] + '"' : 'disabled') + '>' + ico(r[0]) + r[1] + '</button></li>';
     }).join('');
-    h += IDS.map(function (id) {
-      if (SOON[id]) return '<li><button disabled>' + ico(SVC[id].icon) + SVC[id].name + '<span class="soon-tag">скоро</span></button></li>';
-      if (!installed(id)) return '<li><button data-go="' + id + '">' + ico(SVC[id].icon) + SVC[id].name + '<span class="soon-tag">не установлено</span></button></li>';
-      return '<li><button data-svc="' + id + '">' + ico(SVC[id].icon) + SVC[id].name + (S.on[id] ? ico('check', 'chk') : '') + '</button></li>';
-    }).join('');
-    h += '<li class="sep"></li>' +
-      '<li><button data-act="checkUpdates">' + ico('refresh') + 'Проверить обновления</button></li>' +
-      '<li><button data-go="settings">' + ico('sliders') + 'Настройки</button></li>' +
-      '<li><button data-act="exitApp">' + ico('x') + 'Выход</button></li>';
+    h += '<li class="sep"></li><li><button data-act="exitApp">' + ico('x') + 'Выход</button></li>';
     $('#trayList').innerHTML = h;
     var n = IDS.filter(function (id) { return S.on[id]; }).length;
     $('#trayIcons').textContent = 'Служб активно: ' + n;
@@ -185,7 +183,10 @@
   function renderSide() {
     var n = live().filter(function (c) { return c.next; }).length;
     var p = $('#sidePill');
-    if (n) { p.className = 'pill warn'; p.innerHTML = ico('refresh') + 'Доступно обновлений: ' + n; }
+    var dot = $('#navDot');
+    if (dot) dot.hidden = !n;
+    if (isChecking()) { p.className = 'pill'; p.innerHTML = '<span class="spin"></span>Проверяем обновления…'; }
+    else if (n) { p.className = 'pill warn'; p.innerHTML = ico('refresh') + 'Доступно обновлений: ' + n; }
     else { p.className = 'pill'; p.innerHTML = ico('check') + 'Все системы работают'; }
   }
 
@@ -239,16 +240,77 @@
     }).join('');
   }
 
+  /* упрощённый разбор описания релиза: заголовки, списки, жирный текст */
+  function md(src) {
+    var out = [], list = false;
+    function inline(s) { return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<span class="mono">$1</span>').replace(/\[(.+?)\]\(.+?\)/g, '$1'); }
+    String(src || '').replace(/\r/g, '').split('\n').forEach(function (line) {
+      var m;
+      if ((m = /^\s*[-*]\s+(.*)$/.exec(line))) { if (!list) { out.push('<ul>'); list = true; } out.push('<li>' + inline(m[1]) + '</li>'); return; }
+      if (list) { out.push('</ul>'); list = false; }
+      if ((m = /^#{1,4}\s+(.*)$/.exec(line))) out.push('<h4>' + inline(m[1]) + '</h4>');
+      else if (line.trim()) out.push('<p>' + inline(line) + '</p>');
+    });
+    if (list) out.push('</ul>');
+    return out.join('');
+  }
+  function renderNotes() {
+    var host = $('#homeNotes');
+    if (!host) return;
+    host.innerHTML = live().filter(function (c) { return c.cur && c.rel; }).map(function (c) {
+      var r = c.rel, state = c.next ? '<span class="tag warn">есть новая</span>' : (c.cur === r.version ? '<span class="tag ok">установлена</span>' : '');
+      return '<div class="panel notes-panel"><div class="panel-head"><h3>Что нового · ' + esc(c.name) + '</h3><span class="inl"><span class="ver">' + esc(r.version) + '</span>' + state + '</span></div>' +
+        '<div class="notes">' + (r.body && r.body.trim() ? md(r.body) : '<p>Описание к этой версии не указано.</p>') + '</div>' +
+        '<div class="notes-foot"><span class="note">' + (r.published ? 'Опубликовано: ' + esc(String(r.published).slice(0, 10)) : '') + '</span><button class="btn sm" data-url="' + esc(r.url) + '">Все изменения на GitHub</button></div></div>';
+    }).join('');
+    var n = live().filter(function (c) { return c.next; });
+    var b = $('#homeUpd');
+    b.hidden = !n.length;
+    if (n.length) b.innerHTML = '<span><b>Доступно обновлений: ' + n.length + '</b> · ' + n.map(function (c) { return esc(c.name) + ' ' + esc(c.next); }).join(', ') + '</span><button class="btn sm primary" data-go="updates">Открыть обновления</button>';
+  }
+  function loadNotes() {
+    if (!inTauri) return;
+    ['app', 'discord'].forEach(function (id) {
+      var c = comp(id);
+      if (!c || (id !== 'app' && !c.cur)) return;
+      T.core.invoke('release_notes', { id: id }).then(function (n) {
+        c.rel = { version: n.version, body: n.body, url: n.url, published: n.published };
+        renderNotes();
+      }).catch(function () { /* без сети заметок нет */ });
+    });
+  }
+  function isChecking() { return checking || startPending; }
+  var startPending = false;
+  function openUrl(u) {
+    if (inTauri) T.core.invoke('open_url', { url: u }).catch(function (e) { toast(String(e), 'warn'); });
+    else window.open(u, '_blank', 'noopener');
+  }
+  /* настройки сохраняются сразу при переключении */
+  function saveSettings() {
+    if (!inTauri) return;
+    T.core.invoke('settings_set', { settings: S.settings }).then(function (s) { S.settings = s; sync(); }).catch(function (err) {
+      toast(String(err).slice(0, 200), 'warn');
+      T.core.invoke('settings_get').then(function (s) { S.settings = s; sync(); });
+    });
+  }
+  var trayLast = null;
+  function syncTray() {
+    if (!inTauri || trayLast === !!S.on.discord) return;
+    trayLast = !!S.on.discord;
+    T.core.invoke('tray_set_discord', { on: trayLast }).catch(function () {});
+  }
   function renderVersions() {
     $('#lastCheck').textContent = S.lastCheck;
     var ve = $('#verErr');
     ve.hidden = !S.verErr;
     ve.textContent = S.verErr ? 'Не удалось проверить обновления: ' + S.verErr : '';
     $('#verList').innerHTML = live().map(function (c) {
-      var latest = c.next || c.cur || c.latest || '…', stat;
+      var unchecked = !c.checked && (c.id === 'app' || REAL[c.id]);
+      var latest = c.next || (unchecked ? '…' : (c.cur || c.latest || '…')), stat;
       if (c.busy != null) stat = '<span class="bar-track" style="width:110px"><span class="bar-fill" style="width:' + c.busy + '%"></span></span>';
       else if (!c.cur) stat = '<button class="btn sm primary" data-act="installComp" data-arg="' + c.id + '">Установить</button>';
       else if (c.next) stat = '<button class="btn sm primary" data-act="updateOne" data-arg="' + c.id + '">Обновить</button>';
+      else if (unchecked) stat = isChecking() ? '<span class="tag"><span class="spin"></span>Проверяем…</span>' : '<span class="tag">Не проверено</span>';
       else stat = '<span class="tag ok">Актуально</span>';
       return '<div class="vrow"><div class="vwho"><span class="badge sm ' + c.cls + '">' + ico(c.icon) + '</span>' +
         '<span class="pn"><b>' + c.name + (appMode && c.demo ? ' <span class="tag">демо</span>' : '') + '</b><small>' + esc(c.src) + '</small></span></div>' +
@@ -285,7 +347,7 @@
   function renderAll() {
     renderSide(); renderCards(); renderTray(); renderHeads(); renderLog();
     renderInstall(); renderDiscord(); renderTelegram(); renderProfiles('vless'); renderProfiles('wg');
-    renderVersions(); renderSecurity(); sync();
+    renderVersions(); renderNotes(); renderSecurity(); sync(); syncTray();
   }
 
   function go(page) {
@@ -503,17 +565,20 @@
       setTimeout(function () { checking = false; finishCheck(silent); }, 1100);
       return;
     }
-    Object.keys(REAL).forEach(refreshLatest);
+    Object.keys(REAL).forEach(function (id) { if (comp(id).cur) refreshLatest(id).then(renderAll); });
     T.core.invoke('check_update').then(function (info) {
       var c = comp('app');
       c.cur = info.current;
       c.next = info.available ? info.latest : null;
       c.notes = info.notes ? [info.notes] : [];
+      c.checked = true;
       S.verErr = null;
       checking = false;
+      loadNotes();
       finishCheck(silent);
     }).catch(function (err) {
       checking = false;
+      comp('app').checked = true;
       var msg = String(err);
       S.verErr = msg;
       addLog({ m: 'Проверка обновлений — ошибка: ' + msg });
@@ -532,7 +597,8 @@
       var c = comp(id);
       c.latest = l.version;
       c.next = c.cur && c.cur !== l.version ? l.version : null;
-    }).catch(function (err) { S.verErr = String(err); });
+      c.checked = true;
+    }).catch(function (err) { S.verErr = String(err); comp(id).checked = true; });
   }
   function installReal(id) {
     var c = comp(id);
@@ -676,7 +742,6 @@
     installComp: installComp,
     takeOver: takeOver,
     runSec: runSec,
-    saveSettings: function () { toast('Настройки сохранены'); },
     exitApp: function () { toast('В настоящем приложении здесь закроется Бунт.'); },
     stub: function (a) { toast(a || 'Скоро'); },
     toggleTray: function () {
@@ -689,9 +754,10 @@
   };
 
   document.addEventListener('click', function (e) {
-    var el = e.target.closest('[data-go],[data-svc],[data-strat],[data-sw],[data-seg] button,[data-act],[data-pick],[data-del]');
+    var el = e.target.closest('[data-go],[data-svc],[data-strat],[data-sw],[data-seg] button,[data-act],[data-pick],[data-del],[data-url]');
     if (!el) return;
     var d = el.dataset;
+    if (d.url) { openUrl(d.url); return; }
     if (d.go) { go(d.go); return; }
     if (d.strat) { pickStrat(d.strat); return; }
     if (d.svc) { setSvc(d.svc, !S.on[d.svc]); return; }
@@ -701,6 +767,7 @@
       if (d.sw === 'discord.autoupd') toast(S.discord.autoupd ? 'Автопроверка включена' : 'Автопроверка выключена');
       renderDiscord();
       sync();
+      if (d.sw.indexOf('settings.') === 0) saveSettings();
       if (d.sw === 'discord.game') restartDiscord();
       return;
     }
@@ -756,6 +823,8 @@
 
   /* старт */
   S.comps.forEach(function (c) { if (c.id !== 'app') c.demo = true; });
+  /* в настоящем приложении до первой проверки не пишем «Актуально» */
+  if (inTauri) { startPending = true; S.comps.forEach(function (c) { c.checked = false; }); }
   if (appMode) { S.uptime = 0; S.lastCheck = 'ещё не проверяли'; }
   S.discord.scores = {};
   STRATS.forEach(function (n, i) { S.discord.scores[n] = INIT_SCORES[i]; });
@@ -769,24 +838,28 @@
     T.core.invoke('modules_dir').then(function (p) {
       $$('[data-modpath]').forEach(function (el) { el.hidden = false; el.textContent = 'Папка установки: ' + p; });
     });
-    T.core.invoke('zapret_status').then(function (st) {
-      if (!st.running) return;
-      var d = S.discord;
-      if (st.strategy && STRATS.indexOf(st.strategy) >= 0) { d.strategy = st.strategy; d.mode = 'manual'; }
-      if (st.game) d.game = st.game !== 'disabled';
-      if (st.ipset) d.ipset = st.ipset;
-      S.on.discord = true;
-      addLog({ svc: 'Zapret (Discord)', m: 'Запрет уже работал. Бунт подхватил его.', ok: true });
-      renderAll();
-    }).catch(function () { /* без winws */ });
     T.core.invoke('installed_components').then(function (m) {
       Object.keys(m).forEach(function (id) { if (comp(id)) comp(id).cur = m[id]; });
       renderAll();
       Object.keys(REAL).forEach(function (id) { refreshLatest(id).then(renderAll); });
-      /* при запуске: если запрет уже работает не из Бунта, предложить перейти на Бунт */
-      if (comp('discord').cur) {
-        T.core.invoke('zapret_status').then(function (st) { if (!st.running) checkForeign(); }).catch(function () {});
-      }
+      loadNotes();
+      if (!comp('discord').cur) return;
+      /* запрет мог остаться включённым (обновление Бунта) или быть включён пользователем до выхода */
+      T.core.invoke('zapret_status').then(function (st) {
+        var d = S.discord;
+        if (st.strategy && STRATS.indexOf(st.strategy) >= 0) { d.strategy = st.strategy; d.mode = 'manual'; }
+        if (st.game) d.game = st.game !== 'disabled';
+        if (st.ipset) d.ipset = st.ipset;
+        if (st.running) {
+          S.on.discord = true;
+          addLog({ svc: 'Zapret (Discord)', m: 'Запрет уже работал. Бунт подхватил его.', ok: true });
+          renderAll();
+        } else if (st.enabled) {
+          realDiscord(true, true);          /* поднимаем запрет, который был включён */
+        } else {
+          checkForeign();                   /* работает не из Бунта: предложить перейти */
+        }
+      }).catch(function () {});
     }).catch(function () { renderAll(); });
     T.event.listen('module-progress', function (e) {
       var p = e.payload || {}, c = comp(p.id);
@@ -800,8 +873,12 @@
       }
     });
     T.event.listen('update-installing', function () { toast('Устанавливаем обновление. Бунт перезапустится.'); });
-    T.event.listen('tray-check-update', function () { checkUpdates(); });
-    if (S.settings.autoupdate) setTimeout(function () { checkUpdates(true); }, 1500);
+    T.event.listen('navigate', function (e) { go(String(e.payload)); });
+    T.core.invoke('settings_get').then(function (s) { S.settings = s; }).catch(function () {}).then(function () {
+      startPending = false;
+      sync();
+      if (S.settings.autoupdate) checkUpdates(true); else renderAll();
+    });
   }
 
   function fmtUp(s) { return Math.floor(s / 86400) + ' д. ' + Math.floor(s % 86400 / 3600) + ' ч. ' + Math.floor(s % 3600 / 60) + ' мин.'; }

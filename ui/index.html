@@ -62,6 +62,7 @@
             <button class="nav" data-go="vless"><svg class="ic"><use href="#i-net"/></svg>VLESS<span class="soon-tag">скоро</span></button>
             <button class="nav" data-go="wg"><svg class="ic"><use href="#i-vpn"/></svg>WireGuard<span class="soon-tag">скоро</span></button>
             <button class="nav" data-go="security"><svg class="ic"><use href="#i-shield"/></svg>Безопасность</button>
+            <button class="nav" data-go="updates"><svg class="ic"><use href="#i-download"/></svg>Обновления<span class="nav-dot" id="navDot" hidden></span></button>
             <button class="nav" data-go="settings"><svg class="ic"><use href="#i-sliders"/></svg>Настройки</button>
           </nav>
           <div class="side-foot">
@@ -84,17 +85,8 @@
                 <div class="chip"><span class="ico"><svg class="ic"><use href="#i-clock"/></svg></span><span><small>Время работы</small><strong id="uptime"></strong></span></div>
               </div>
             </div>
-            <div class="panel" id="verPanel">
-              <div class="panel-head">
-                <h3>Версии и обновления</h3>
-                <div class="vhead">
-                  <span class="note">Проверено: <span id="lastCheck"></span></span>
-                  <button class="btn sm" data-act="checkUpdates"><svg class="ic"><use href="#i-refresh"/></svg>Проверить</button>
-                </div>
-              </div>
-              <p class="note warn" id="verErr" hidden></p>
-              <div id="verList"></div>
-            </div>
+            <div class="panel upd-banner" id="homeUpd" hidden></div>
+            <div id="homeNotes"></div>
           </section>
 
           <!-- Discord и YouTube -->
@@ -291,6 +283,27 @@
           </section>
 
           <!-- Настройки -->
+          <!-- Обновления -->
+          <section data-page="updates" hidden>
+            <div class="page-head">
+              <div>
+                <h1>Обновления</h1>
+                <p class="sub">Версии Бунта и установленных компонентов. Ничего не скачивается, пока вы сами не нажмёте кнопку.</p>
+              </div>
+            </div>
+            <div class="panel" id="verPanel">
+              <div class="panel-head">
+                <h3>Версии и обновления</h3>
+                <div class="vhead">
+                  <span class="note">Проверено: <span id="lastCheck"></span></span>
+                  <button class="btn sm" data-act="checkUpdates"><svg class="ic"><use href="#i-refresh"/></svg>Проверить</button>
+                </div>
+              </div>
+              <p class="note warn" id="verErr" hidden></p>
+              <div id="verList"></div>
+            </div>
+          </section>
+
           <section data-page="settings" hidden>
             <div class="page-head">
               <div>
@@ -310,7 +323,6 @@
                     <select class="field" style="width:170px" aria-label="Тема интерфейса"><option>Тёмная</option><option disabled>Светлая (скоро)</option></select></div>
                   <div class="row"><span class="lbl">Язык интерфейса</span>
                     <select class="field" style="width:170px" aria-label="Язык интерфейса"><option>Русский</option><option disabled>English (скоро)</option></select></div>
-                  <div class="btnrow"><button class="btn primary" data-act="saveSettings">Сохранить</button></div>
                 </div>
               </div>
               <div class="stack">
@@ -321,7 +333,7 @@
                     <div>
                       <div class="strong">Бунт <span class="note">v<span data-appver>0.1.0</span></span></div>
                       <div class="note">Единый центр сетевых инструментов</div>
-                      <div class="links"><span>GitHub</span><span>Документация</span><span>Поддержка</span></div>
+                      <div class="links"><button class="link" data-url="https://github.com/belka-developer/bunt">GitHub</button><button class="link" data-url="https://github.com/belka-developer/bunt#readme">Документация</button><button class="link" data-url="https://discord.gg/dw65R5Mvft">Поддержка</button></div>
                     </div>
                   </div>
                   <p class="note mt">Лицензия: GNU General Public License v3.0. Сделано для тех, кто ценит свободу.</p>
