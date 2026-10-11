@@ -312,3 +312,17 @@ body.app .shell { min-height: 100vh; }
 .install .inst-meta { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; color: var(--muted); font-size: 12px; }
 .install .bar-track { width: 260px; }
 .card.noinst .meta { color: var(--muted); }
+
+/* боковая панель стоит на месте, прокручивается только содержимое */
+.shell { background: linear-gradient(90deg, #08111a 224px, var(--line) 224px, var(--line) 225px, transparent 225px); }
+.side { position: sticky; top: 0; align-self: start; min-height: min(680px, 100vh); max-height: 100vh; overflow-y: auto; }
+body.app .shell { height: 100vh; min-height: 0; overflow: hidden; }
+body.app .side { position: static; height: 100vh; max-height: none; min-height: 0; }
+body.app .view { height: 100vh; overflow-y: auto; }
+@media (max-width: 760px) { .shell { background: none; } }
+@media (max-width: 760px) {
+  .side { position: static; max-height: none; min-height: 0; }
+  body.app .shell { height: auto; overflow: visible; }
+  body.app .side { height: auto; }
+  body.app .view { height: auto; overflow: visible; }
+}

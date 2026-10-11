@@ -4,6 +4,8 @@
 //! обновлений из GitHub Releases, значок в трее, запуск одного экземпляра.
 //! Запуск запретов (winws), служба и компоненты появятся позже.
 
+mod modules;
+
 use serde::Serialize;
 use tauri::{
     menu::{Menu, MenuItem},
@@ -150,7 +152,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             app_info,
             check_update,
-            install_update
+            install_update,
+            modules::installed_components,
+            modules::modules_dir,
+            modules::latest_component,
+            modules::install_component
         ])
         .setup(|app| {
             setup_tray(app)?;

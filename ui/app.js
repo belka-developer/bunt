@@ -253,7 +253,7 @@
     ve.hidden = !S.verErr;
     ve.textContent = S.verErr ? 'Не удалось проверить обновления: ' + S.verErr : '';
     $('#verList').innerHTML = live().map(function (c) {
-      var latest = c.next || c.cur || c.latest, stat;
+      var latest = c.next || c.cur || c.latest || '…', stat;
       if (c.busy != null) stat = '<span class="bar-track" style="width:110px"><span class="bar-fill" style="width:' + c.busy + '%"></span></span>';
       else if (!c.cur) stat = '<button class="btn sm primary" data-act="installComp" data-arg="' + c.id + '">Установить</button>';
       else if (c.next) stat = '<button class="btn sm primary" data-act="updateOne" data-arg="' + c.id + '">Обновить</button>';
@@ -445,6 +445,7 @@
       setTimeout(function () { checking = false; finishCheck(silent); }, 1100);
       return;
     }
+    Object.keys(REAL).forEach(refreshLatest);
     T.core.invoke('check_update').then(function (info) {
       var c = comp('app');
       c.cur = info.current;
@@ -466,9 +467,36 @@
       renderAll();
     });
   }
+  /* настоящие компоненты внутри Tauri: пока только запрет для Discord и YouTube */
+  var REAL = { discord: true };
+  function refreshLatest(id) {
+    return T.core.invoke('latest_component', { id: id }).then(function (l) {
+      var c = comp(id);
+      c.latest = l.version;
+      c.next = c.cur && c.cur !== l.version ? l.version : null;
+    }).catch(function (err) { S.verErr = String(err); });
+  }
+  function installReal(id) {
+    var c = comp(id);
+    c.busy = 0;
+    addLog({ svc: c.name, m: 'Загрузка из ' + c.src.replace(/ \(GitHub\)/, '') + '…' });
+    renderAll();
+    T.core.invoke('install_component', { id: id }).then(function (v) {
+      c.cur = v; c.latest = v; c.next = null; c.busy = null;
+      addLog({ svc: c.name, m: 'Установлено: ' + v + '. Хеш проверен.', ok: true });
+      toast(c.name + ' установлен');
+      renderAll();
+    }).catch(function (err) {
+      c.busy = null;
+      addLog({ svc: c.name, m: 'Ошибка установки: ' + err });
+      toast('Не удалось установить: ' + String(err).slice(0, 160), 'warn');
+      renderAll();
+    });
+  }
   function installComp(id) {
     var c = comp(id);
     if (!c || c.cur || c.busy != null) return;
+    if (inTauri && REAL[id]) { installReal(id); return; }
     c.busy = 0;
     addLog({ svc: c.name, m: 'Загрузка версии ' + c.latest + ' из ' + c.src.replace(/ \(GitHub\)/, '') + '…' });
     renderAll();
@@ -486,6 +514,7 @@
   function updateOne(id) {
     var c = S.comps.filter(function (x) { return x.id === id; })[0];
     if (!c || !c.next || c.busy != null) return;
+    if (inTauri && REAL[id]) { installReal(id); return; }
     if (inTauri && id === 'app') {
       c.busy = 0;
       renderVersions();
@@ -713,6 +742,19 @@
 
   if (inTauri) {
     T.core.invoke('app_info').then(function (i) { setAppVersion(i.version); renderAll(); });
+    Object.keys(REAL).forEach(function (id) { comp(id).latest = null; comp(id).demo = false; comp(id).sha = '–'; });
+    T.core.invoke('modules_dir').then(function (p) {
+      $$('[data-modpath]').forEach(function (el) { el.hidden = false; el.textContent = 'Папка установки: ' + p; });
+    });
+    T.core.invoke('installed_components').then(function (m) {
+      Object.keys(m).forEach(function (id) { if (comp(id)) comp(id).cur = m[id]; });
+      renderAll();
+      Object.keys(REAL).forEach(function (id) { refreshLatest(id).then(renderAll); });
+    }).catch(function () { renderAll(); });
+    T.event.listen('module-progress', function (e) {
+      var p = e.payload || {}, c = comp(p.id);
+      if (c && c.busy != null && p.total) { c.busy = Math.min(99, Math.round(p.downloaded / p.total * 100)); renderAll(); }
+    });
     T.event.listen('update-progress', function (e) {
       var c = comp('app'), p = e.payload || {};
       if (c && c.busy != null && p.total) {
