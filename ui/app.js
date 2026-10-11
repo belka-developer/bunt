@@ -727,6 +727,16 @@
     T.core.invoke('modules_dir').then(function (p) {
       $$('[data-modpath]').forEach(function (el) { el.hidden = false; el.textContent = 'Папка установки: ' + p; });
     });
+    T.core.invoke('zapret_status').then(function (st) {
+      if (!st.running) return;
+      var d = S.discord;
+      if (st.strategy && STRATS.indexOf(st.strategy) >= 0) { d.strategy = st.strategy; d.mode = 'manual'; }
+      if (st.game) d.game = st.game !== 'disabled';
+      if (st.ipset) d.ipset = st.ipset;
+      S.on.discord = true;
+      addLog({ svc: 'Zapret (Discord)', m: 'Запрет уже работал. Бунт подхватил его.', ok: true });
+      renderAll();
+    }).catch(function () { /* без winws */ });
     T.core.invoke('installed_components').then(function (m) {
       Object.keys(m).forEach(function (id) { if (comp(id)) comp(id).cur = m[id]; });
       renderAll();

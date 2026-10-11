@@ -29,6 +29,10 @@ impl Zapret {
             let _ = child.kill();
             let _ = child.wait();
         }
+        // winws, оставшийся от прошлого запуска Бунта (например, при обновлении)
+        for pid in our_pids() {
+            kill_pid(pid);
+        }
     }
 }
 
@@ -133,6 +137,41 @@ fn prepare_lists(dir: &Path, ipset: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// PID процессов winws.exe, запущенных из нашей папки modules (чужие, например от службы Flowseal, не трогаем).
+fn our_pids() -> Vec<u32> {
+    #[cfg(windows)]
+    {
+        let Ok(root) = crate::modules::modules_root() else { return Vec::new() };
+        let mask = format!("{}\\*", root.display()).replace('\'', "''");
+        let script = format!(
+            "Get-Process winws -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -like '{mask}' }} | ForEach-Object {{ $_.Id }}"
+        );
+        if let Ok(o) = Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+        {
+            return String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .filter_map(|l| l.trim().parse().ok())
+                .collect();
+        }
+    }
+    Vec::new()
+}
+
+fn kill_pid(pid: u32) {
+    #[cfg(windows)]
+    {
+        let _ = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/F"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+    }
+    #[cfg(not(windows))]
+    let _ = pid;
+}
+
 fn winws_running() -> bool {
     #[cfg(windows)]
     {
@@ -219,6 +258,10 @@ pub async fn zapret_start(
         return Err(format!("winws.exe сразу завершился ({status}). {info}"));
     }
     *state.0.lock().unwrap() = Some(child);
+    if let Ok(root) = crate::modules::modules_root() {
+        let last = serde_json::json!({ "strategy": strategy, "game": game, "ipset": ipset });
+        let _ = fs::write(root.join("zapret.json"), last.to_string());
+    }
     Ok(())
 }
 
@@ -228,14 +271,33 @@ pub fn zapret_stop(state: tauri::State<'_, Zapret>) {
     state.stop();
 }
 
-/// Работает ли запущенный Бунтом winws.
+#[derive(serde::Serialize)]
+pub struct Status {
+    running: bool,
+    strategy: Option<String>,
+    game: Option<String>,
+    ipset: Option<String>,
+}
+
+/// Работает ли winws из папки Бунта и с какими настройками он был запущен.
+/// Нужно при старте: после обновления Бунта запрет продолжает работать, и интерфейс должен это показать.
 #[tauri::command]
-pub fn zapret_running(state: tauri::State<'_, Zapret>) -> bool {
-    let mut guard = state.0.lock().unwrap();
-    match guard.as_mut() {
-        Some(c) => matches!(c.try_wait(), Ok(None)),
-        None => false,
-    }
+pub fn zapret_status(state: tauri::State<'_, Zapret>) -> Status {
+    let own = {
+        let mut guard = state.0.lock().unwrap();
+        match guard.as_mut() {
+            Some(c) => matches!(c.try_wait(), Ok(None)),
+            None => false,
+        }
+    };
+    let running = own || !our_pids().is_empty();
+    let last: serde_json::Value = crate::modules::modules_root()
+        .ok()
+        .and_then(|r| fs::read_to_string(r.join("zapret.json")).ok())
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    let get = |k: &str| last.get(k).and_then(|v| v.as_str()).map(String::from);
+    Status { running, strategy: get("strategy"), game: get("game"), ipset: get("ipset") }
 }
 
 #[cfg(test)]
