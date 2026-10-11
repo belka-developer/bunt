@@ -367,7 +367,8 @@ fn start_blocking() -> Result<(), String> {
 
 fn run_py(py: &Path, args: &[&str]) -> Result<(), String> {
     let mut cmd = Command::new(py);
-    cmd.args(args).env("PYTHONDONTWRITEBYTECODE", "1").env("PIP_DISABLE_PIP_VERSION_CHECK", "1").stdin(Stdio::null());
+    // Рабочая папка Бунта может быть любой (например, System32): относительные пути от неё не годятся
+    cmd.args(args).current_dir(py.parent().unwrap_or(Path::new("."))).env("PYTHONDONTWRITEBYTECODE", "1").env("PIP_DISABLE_PIP_VERSION_CHECK", "1").stdin(Stdio::null());
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
     let out = cmd.output().map_err(|e| format!("Не удалось запустить Python: {e}"))?;
@@ -404,12 +405,13 @@ pub(crate) async fn ensure_runtime(app: &AppHandle) -> Result<(), String> {
         write_pth(None)?;
         crate::modules::progress(app, "telegram", 30, 100);
         let gp = crate::modules::download_bytes(GET_PIP).await.map_err(|e| format!("pip: {e}"))?;
-        fs::write(rt.join("get-pip.py"), &gp).map_err(|e| e.to_string())?;
+        let gp_path = rt.join("get-pip.py").display().to_string();
+        fs::write(&gp_path, &gp).map_err(|e| e.to_string())?;
         crate::modules::progress(app, "telegram", 40, 100);
         let py = python_exe()?;
         let app2 = app.clone();
         tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
-            run_py(&py, &["get-pip.py", "--no-warn-script-location"]).map_err(|e| format!("Не удалось установить pip: {e}"))?;
+            run_py(&py, &[&gp_path, "--no-warn-script-location"]).map_err(|e| format!("Не удалось установить pip: {e}"))?;
             crate::modules::progress(&app2, "telegram", 60, 100);
             run_py(&py, &["-m", "pip", "install", "--no-warn-script-location", "--only-binary=:all:", "httpx[http2]==0.28.1", "certifi"])
                 .map_err(|e| format!("Не удалось установить библиотеки: {e}"))?;
