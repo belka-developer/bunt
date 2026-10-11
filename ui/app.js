@@ -37,7 +37,7 @@
   var S = {
     page: 'home',
     on: { discord: false, telegram: false, vless: false, wg: false },
-    discord: { mode: 'auto', strategy: 'general (ALT2)', game: false, ipset: 'none', lastTest: 'сегодня, 14:32', service: true, hosts: 'old', fake: 'tls_clienthello_www_google_com.bin', autoupd: true, ipsetUpdated: 'сегодня, 09:12' },
+    discord: { mode: 'auto', strategy: 'general (ALT2)', game: false, ipset: 'none', lastTest: 'сегодня, 14:32', autoupd: true, ipsetUpdated: 'сегодня, 09:12' },
     telegram: { port: '1080' },
     lists: {
       general: { file: 'list-general-user.txt', title: 'Свои домены', hint: 'Домены для обхода, по одному на строку. Поддомены учитываются автоматически.', text: '# по одному домену на строку\nexample.org\ncdn.example.org\n' },
@@ -199,16 +199,8 @@
     $('#lastTest').textContent = d.lastTest;
     $('#ipsetWarn').hidden = d.ipset !== 'any';
     $('#ipsetDesc').textContent = { none: 'none: IP-адреса не проверяются', loaded: 'loaded: IP проверяется по списку ipset-all.txt', any: 'any: любой IP попадает под фильтр' }[d.ipset];
-    $('#svcStrat').textContent = d.strategy;
     $('#ipsetUpd').textContent = d.ipsetUpdated;
-    var ht = $('#hostsTag');
-    ht.className = 'tag ' + (d.hosts === 'ok' ? 'ok' : 'warn');
-    ht.textContent = d.hosts === 'ok' ? 'Актуален' : 'Устарел';
-    $('#svcStatus').innerHTML = [
-      ['Стратегия', S.on.discord, 'работает', 'остановлена'],
-      ['Служба', d.service, 'установлена', 'не установлена'],
-      ['WinDivert', S.on.discord, 'загружен', 'не загружен']
-    ].map(function (r) { return '<span class="tag ' + (r[1] ? 'ok' : '') + '">' + r[0] + ': ' + (r[1] ? r[2] : r[3]) + '</span>'; }).join('');
+    $('#dVer').textContent = comp('discord').cur || '–';
     $('#lists').innerHTML = Object.keys(S.lists).map(function (k) {
       var l = S.lists[k];
       var n = l.text.split('\n').map(function (x) { return x.trim(); }).filter(function (x) { return x && x.charAt(0) !== '#'; }).length;
@@ -625,38 +617,6 @@
       toast('Список ipset-all.txt обновлён');
       renderDiscord();
     },
-    updHosts: function () {
-      S.discord.hosts = 'ok';
-      addLog({ svc: 'Zapret (Discord)', m: 'Файл hosts обновлён.', ok: true });
-      toast('Файл hosts обновлён');
-      renderDiscord();
-    },
-    applyFake: function () {
-      addLog({ svc: 'Zapret (Discord)', m: 'Фейк заменён на ' + S.discord.fake + '.' });
-      toast('Фейк заменён: ' + S.discord.fake + (S.on.discord ? '. Служба перезапускается…' : ''));
-    },
-    removeSvc: function () {
-      S.discord.service = false;
-      addLog({ svc: 'Zapret (Discord)', m: 'Службы и драйвер WinDivert удалены.' });
-      toast('Службы и WinDivert удалены');
-      renderDiscord(); sync();
-    },
-    diag: function () {
-      var items = [
-        { t: 'Антивирус не блокирует WinDivert', ok: true },
-        { t: 'Нет конфликтующих программ (AdGuard, Killer и др.)', ok: true },
-        { t: 'Нет лишних копий winws.exe', ok: true },
-        { t: 'Secure DNS включён', ok: false, note: 'Включите безопасный DNS в браузере или в Windows 11.' },
-        { t: 'Файл hosts актуален', ok: S.discord.hosts === 'ok', note: 'Обновите его в разделе «Обслуживание».' },
-        { t: 'Остатков службы WinDivert нет', ok: true }
-      ];
-      openModal('Диагностика',
-        '<div class="sec-list">' + items.map(function (i) {
-          return '<div class="sec-item ' + (i.ok ? '' : 'warn') + '">' + ico(i.ok ? 'check' : 'alert') + '<span>' + i.t + (i.ok ? '' : '<small>' + i.note + '</small>') + '</span><span class="res">' + (i.ok ? 'OK' : 'Внимание') + '</span></div>';
-        }).join('') + '</div>',
-        '<button class="btn" data-act="clearDiscord">Очистить кэш Discord</button><button class="btn primary" data-act="closeModal">Закрыть</button>');
-    },
-    clearDiscord: function () { closeModal(); toast('Кэш Discord очищен'); },
     stopAll: function () { stopAll(); toast('Все службы остановлены'); },
     restartAll: function () {
       var was = IDS.filter(function (id) { return S.on[id]; });
@@ -696,10 +656,6 @@
     if (d.sw) {
       set(d.sw, !get(d.sw));
       if (d.sw === 'discord.game') addLog({ svc: 'Zapret (Discord)', m: 'Game Filter: ' + (S.discord.game ? 'включён' : 'выключен') + '. Нужен перезапуск стратегии.' });
-      if (d.sw === 'discord.service') {
-        addLog({ svc: 'Zapret (Discord)', m: S.discord.service ? 'Служба установлена со стратегией ' + S.discord.strategy + '.' : 'Служба удалена.' });
-        toast(S.discord.service ? 'Запрет будет запускаться вместе с Windows' : 'Автозапуск выключен');
-      }
       if (d.sw === 'discord.autoupd') toast(S.discord.autoupd ? 'Автопроверка включена' : 'Автопроверка выключена');
       renderDiscord();
       sync();
@@ -757,8 +713,6 @@
   });
 
   /* старт */
-  var FAKES = ['tls_clienthello_www_google_com.bin', 'tls_clienthello_4pda_to.bin', 'quic_initial_www_google_com.bin', 'stun.bin'];
-  $('#fakeSel').innerHTML = FAKES.map(function (f) { return '<option>' + f + '</option>'; }).join('');
   S.comps.forEach(function (c) { if (c.id !== 'app') c.demo = true; });
   if (appMode) { S.uptime = 0; S.lastCheck = 'ещё не проверяли'; }
   S.discord.scores = {};

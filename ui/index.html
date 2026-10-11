@@ -151,21 +151,8 @@
               </div>
               <div class="stack">
                 <div class="panel">
-                  <h3>Автозапуск</h3>
-                  <div class="row"><div class="lbl">Запускать вместе с Windows<small>Устанавливает службу со стратегией <b class="mono" id="svcStrat"></b></small></div><button class="sw" role="switch" data-sw="discord.service" aria-label="Запускать вместе с Windows"></button></div>
-                  <div class="row"><div class="lbl">Состояние<small>Стратегия, служба и драйвер WinDivert</small></div><div class="tags" id="svcStatus"></div></div>
-                  <div class="row"><div class="lbl">Удалить службы и WinDivert<small>Если драйвер остался в службах после удаления</small></div><button class="btn sm" data-act="removeSvc">Удалить</button></div>
-                </div>
-                <div class="panel">
-                  <h3>Обслуживание</h3>
-                  <div class="row"><div class="lbl">Файл hosts<small>Чинит веб-версию Telegram и голосовой чат Discord</small></div><div class="inl"><span class="tag" id="hostsTag"></span><button class="btn sm" data-act="updHosts">Обновить</button></div></div>
-                  <div class="row"><div class="lbl">Фейки<small>Заменить используемый фейк на другой из папки bin</small></div><div class="inl"><select class="field" id="fakeSel" data-bind="discord.fake" aria-label="Фейк"></select><button class="btn sm" data-act="applyFake">Заменить</button></div></div>
-                  <div class="row"><div class="lbl">Диагностика<small>Ищет частые причины, почему zapret не работает</small></div><button class="btn sm" data-act="diag">Запустить</button></div>
-                  <div class="row"><div class="lbl">Тесты<small>Стандартный проверяет сайты из utils/targets.txt, DPI-чекеры проверяют разных провайдеров</small></div><div class="inl"><button class="btn sm" data-act="stub" data-arg="Стандартный тест: в прототипе не выполняется">Стандартный</button><button class="btn sm" data-act="stub" data-arg="DPI-чекеры: в прототипе не выполняются">DPI-чекеры</button></div></div>
-                </div>
-                <div class="panel">
                   <h3>Компонент</h3>
-                  <div class="row"><span class="lbl">Версия</span><span class="val">1.2.3</span></div>
+                  <div class="row"><span class="lbl">Версия</span><span class="val" id="dVer"></span></div>
                   <div class="row"><span class="lbl">Источник</span><span class="val">Flowseal/zapret-discord-youtube</span></div>
                   <div class="row"><span class="lbl">Лицензия</span><span class="val">MIT</span></div>
                   <div class="row"><div class="lbl">Автопроверка обновлений<small>Проверять новые релизы при запуске</small></div><button class="sw" role="switch" data-sw="discord.autoupd" aria-label="Автопроверка обновлений"></button></div>
