@@ -154,7 +154,7 @@
       if (sw) sw.parentNode.hidden = !ok;
       document.querySelector('[data-latest="' + id + '"]').textContent = c.latest || '…';
       $('#instAct-' + id).innerHTML = c.busy != null
-        ? '<span class="bar-track"><span class="bar-fill" style="width:' + c.busy + '%"></span></span><div class="note mt-s">Скачиваем и проверяем файлы… ' + c.busy + '%</div>'
+        ? '<span class="bar-track"><span class="bar-fill" style="width:' + c.busy + '%"></span></span><div class="note mt-s">' + (id === 'telegram' ? 'Скачиваем прокси и встроенный Python, это займёт около минуты… ' : 'Скачиваем и проверяем файлы… ') + c.busy + '%</div>'
         : '<button class="btn primary" data-act="installComp" data-arg="' + id + '">' + ico('plus') + 'Установить</button>';
     });
   }
