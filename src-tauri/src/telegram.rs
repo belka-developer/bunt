@@ -396,26 +396,26 @@ pub(crate) async fn ensure_runtime(app: &AppHandle) -> Result<(), String> {
     let _ = fs::remove_dir_all(&rt);
     fs::create_dir_all(&rt).map_err(|e| format!("Нет прав на запись в {}: {e}", rt.display()))?;
     let result: Result<(), String> = async {
-        crate::modules::progress(app, "telegram", 5, 100);
+        crate::modules::progress(app, "telegram", 22, 100, "Скачиваем Python");
         let zip = crate::modules::download_bytes(&embed_url()).await.map_err(|e| format!("Python: {e}"))?;
         let zip_path = rt.join("python-embed.zip");
         fs::write(&zip_path, &zip).map_err(|e| e.to_string())?;
         crate::modules::extract_zip(&zip_path, &rt)?;
         let _ = fs::remove_file(&zip_path);
         write_pth(None)?;
-        crate::modules::progress(app, "telegram", 30, 100);
+        crate::modules::progress(app, "telegram", 40, 100, "Скачиваем pip");
         let gp = crate::modules::download_bytes(GET_PIP).await.map_err(|e| format!("pip: {e}"))?;
         let gp_path = rt.join("get-pip.py").display().to_string();
         fs::write(&gp_path, &gp).map_err(|e| e.to_string())?;
-        crate::modules::progress(app, "telegram", 40, 100);
+        crate::modules::progress(app, "telegram", 50, 100, "Устанавливаем pip");
         let py = python_exe()?;
         let app2 = app.clone();
         tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
             run_py(&py, &[&gp_path, "--no-warn-script-location"]).map_err(|e| format!("Не удалось установить pip: {e}"))?;
-            crate::modules::progress(&app2, "telegram", 60, 100);
+            crate::modules::progress(&app2, "telegram", 65, 100, "Устанавливаем библиотеки");
             run_py(&py, &["-m", "pip", "install", "--no-warn-script-location", "--only-binary=:all:", "httpx[http2]==0.28.1", "certifi"])
                 .map_err(|e| format!("Не удалось установить библиотеки: {e}"))?;
-            crate::modules::progress(&app2, "telegram", 90, 100);
+            crate::modules::progress(&app2, "telegram", 90, 100, "Ускоряем шифрование");
             // cryptography ускоряет шифрование; без неё прокси работает на встроенной замене
             let _ = run_py(&py, &["-m", "pip", "install", "--no-warn-script-location", "--only-binary=:all:", "cryptography"]);
             Ok(())

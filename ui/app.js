@@ -154,7 +154,7 @@
       if (sw) sw.parentNode.hidden = !ok;
       document.querySelector('[data-latest="' + id + '"]').textContent = c.latest || '…';
       $('#instAct-' + id).innerHTML = c.busy != null
-        ? '<span class="bar-track"><span class="bar-fill" style="width:' + c.busy + '%"></span></span><div class="note mt-s">' + (id === 'telegram' ? 'Скачиваем прокси и встроенный Python, это займёт около минуты… ' : 'Скачиваем и проверяем файлы… ') + c.busy + '%</div>'
+        ? '<span class="bar-track"><span class="bar-fill" style="width:' + c.busy + '%"></span></span><div class="note mt-s">' + (id === 'telegram' ? esc(c.stage || 'Готовим установку') + '… ' + c.busy + '%. Это займёт около минуты.' : 'Скачиваем и проверяем файлы… ' + c.busy + '%') + '</div>'
         : '<button class="btn primary" data-act="installComp" data-arg="' + id + '">' + ico('plus') + 'Установить</button>';
     });
   }
@@ -341,7 +341,7 @@
     $('#verList').innerHTML = live().map(function (c) {
       var unchecked = !c.checked && (c.id === 'app' || REAL[c.id]);
       var latest = c.next || (unchecked ? '…' : (c.cur || c.latest || '…')), stat;
-      if (c.busy != null) stat = '<span class="bar-track" style="width:110px"><span class="bar-fill" style="width:' + c.busy + '%"></span></span>';
+      if (c.busy != null) stat = '<span class="bar-track" style="width:110px"><span class="bar-fill" style="width:' + Math.max(c.busy, 4) + '%"></span></span>' + (c.stage ? '<small class="stage">' + esc(c.stage) + '… ' + c.busy + '%</small>' : '');
       else if (!c.cur) stat = '<button class="btn sm primary" data-act="installComp" data-arg="' + c.id + '">Установить</button>';
       else if (c.next) stat = '<button class="btn sm primary" data-act="updateOne" data-arg="' + c.id + '">Обновить</button>';
       else if (unchecked) stat = isChecking() ? '<span class="tag"><span class="spin"></span>Проверяем…</span>' : '<span class="tag">Не проверено</span>';
@@ -712,13 +712,13 @@
     addLog({ svc: c.name, m: 'Загрузка из ' + c.src.replace(/ \(GitHub\)/, '') + '…' });
     renderAll();
     T.core.invoke('install_component', { id: id }).then(function (v) {
-      c.cur = v; c.latest = v; c.next = null; c.busy = null;
+      c.cur = v; c.latest = v; c.next = null; c.busy = null; c.stage = null;
       if (id === 'telegram') T.core.invoke('telegram_status').then(function (st) { applyTg(st); renderAll(); }).catch(function () {});
       addLog({ svc: c.name, m: 'Установлено: ' + v + '. Хеш проверен.', ok: true });
       toast(c.name + ' установлен');
       renderAll();
     }).catch(function (err) {
-      c.busy = null;
+      c.busy = null; c.stage = null;
       addLog({ svc: c.name, m: 'Ошибка установки: ' + err });
       toast('Не удалось установить: ' + String(err).slice(0, 160), 'warn');
       renderAll();
@@ -740,13 +740,13 @@
     addLog({ svc: c.name, m: 'Переустановка: загрузка из ' + c.src.replace(/ \(GitHub\)/, '') + '…' });
     renderAll();
     T.core.invoke('install_component', { id: id, force: true }).then(function (v) {
-      c.cur = v; c.latest = v; c.next = null; c.busy = null; S.on[id] = false;
+      c.cur = v; c.latest = v; c.next = null; c.busy = null; c.stage = null; S.on[id] = false;
       addLog({ svc: c.name, m: 'Переустановлено: ' + v + '. Хеш проверен.', ok: true });
       toast(c.name + ': переустановлено');
       renderAll();
       if (was) { if (id === 'telegram') realTelegram(true, true); else realDiscord(true, true); }
     }).catch(function (err) {
-      c.busy = null;
+      c.busy = null; c.stage = null;
       addLog({ svc: c.name, m: 'Ошибка переустановки: ' + err });
       toast('Не удалось переустановить: ' + String(err).slice(0, 160), 'warn');
       renderAll();
@@ -784,7 +784,7 @@
       c.busy += 10;
       if (c.busy >= 100) {
         clearInterval(iv);
-        c.cur = c.latest; c.busy = null;
+        c.cur = c.latest; c.busy = null; c.stage = null;
         addLog({ svc: c.name, m: 'Установлено: ' + c.cur + '. Хеш проверен.', ok: true });
         toast(c.name + ' установлен');
       }
@@ -800,7 +800,7 @@
       renderVersions();
       addLog({ svc: 'Бунт', m: 'Загрузка версии ' + c.next + '…' });
       T.core.invoke('install_update').catch(function (err) {
-        c.busy = null;
+        c.busy = null; c.stage = null;
         toast('Не удалось установить обновление: ' + String(err).slice(0, 140), 'warn');
         renderVersions();
       });
@@ -814,7 +814,7 @@
       c.busy += 10;
       if (c.busy >= 100) {
         clearInterval(iv);
-        c.cur = c.next; c.next = null; c.busy = null; c.notes = [];
+        c.cur = c.next; c.next = null; c.busy = null; c.stage = null; c.notes = [];
         addLog({ svc: c.name, m: 'Обновлено до ' + c.cur + '. Хеш проверен.', ok: true });
         toast(c.name + ': версия ' + c.cur);
         if (was) setSvc(id, true, true);
@@ -1069,7 +1069,7 @@
     }).catch(function () { renderAll(); });
     T.event.listen('module-progress', function (e) {
       var p = e.payload || {}, c = comp(p.id);
-      if (c && c.busy != null && p.total) { c.busy = Math.min(99, Math.round(p.downloaded / p.total * 100)); renderAll(); }
+      if (c && c.busy != null && p.total) { c.busy = Math.min(99, Math.round(p.downloaded / p.total * 100)); if (p.stage) c.stage = p.stage; renderAll(); }
     });
     T.event.listen('update-progress', function (e) {
       var c = comp('app'), p = e.payload || {};

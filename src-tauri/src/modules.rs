@@ -84,10 +84,12 @@ struct Progress {
     id: String,
     downloaded: u64,
     total: Option<u64>,
+    /// Что сейчас происходит (для компонентов с несколькими этапами установки)
+    stage: Option<String>,
 }
 
-pub(crate) fn progress(app: &AppHandle, id: &str, downloaded: u64, total: u64) {
-    let _ = app.emit("module-progress", Progress { id: id.to_string(), downloaded, total: Some(total) });
+pub(crate) fn progress(app: &AppHandle, id: &str, downloaded: u64, total: u64, stage: &str) {
+    let _ = app.emit("module-progress", Progress { id: id.to_string(), downloaded, total: Some(total), stage: Some(stage.to_string()) });
 }
 
 pub(crate) fn client() -> Result<reqwest::Client, String> {
@@ -236,6 +238,7 @@ pub async fn install_component(
         if id == "telegram" {
             // Python и библиотеки для запуска прокси без окна
             crate::telegram::ensure_runtime(&app).await?;
+            progress(&app, "telegram", 97, 100, "Записываем файлы");
         }
         // Файлы заняты работающим процессом: останавливаем его прямо перед заменой
         if id == "telegram" {
@@ -323,7 +326,14 @@ async fn download_and_extract(
         hasher.update(&chunk);
         file.write_all(&chunk).map_err(|e| e.to_string())?;
         downloaded += chunk.len() as u64;
-        let _ = app.emit("module-progress", Progress { id: id.to_string(), downloaded, total });
+        // У Telegram загрузка файлов это первая пятая часть установки, дальше ставится Python
+        if id == "telegram" {
+            if let Some(t) = total.filter(|t| *t > 0) {
+                progress(app, id, downloaded * 20 / t, 100, "Скачиваем файлы прокси");
+            }
+        } else {
+            let _ = app.emit("module-progress", Progress { id: id.to_string(), downloaded, total, stage: None });
+        }
     }
     drop(file);
 
