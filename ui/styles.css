@@ -340,3 +340,9 @@ body.app .view { height: 100vh; overflow-y: auto; }
 .notes ul { margin: 0; padding-left: 18px; display: grid; gap: 3px; }
 .notes p { margin: 0; color: var(--muted); }
 .notes-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; }
+
+.admin-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(242, 180, 65, 0.5); background: rgba(242, 180, 65, 0.1); font-size: 13px; }
+.admin-banner span { display: inline-flex; align-items: center; gap: 8px; }
+.admin-banner .ic { color: #f2b441; }
+.admin-banner.flash { animation: flash 0.6s ease 2; }
+@keyframes flash { 50% { background: rgba(242, 180, 65, 0.3); } }

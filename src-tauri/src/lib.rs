@@ -128,12 +128,17 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let updates = MenuItem::with_id(app, "go:updates", "Обновления", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "go:settings", "Настройки", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
+    let elevate = MenuItem::with_id(app, "elevate", "Дать Бунту права администратора", true, None::<&str>)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,
         &[&open, &sep1, &discord, &telegram, &vless, &wg, &sep2, &updates, &settings, &quit],
     )?;
+    // Без прав администратора запрет работать не будет: в меню трея появляется пункт, который это исправляет
+    if !settings::is_admin_sync() {
+        menu.insert(&elevate, 1)?;
+    }
     *app.state::<TrayItems>().discord.lock().unwrap() = Some(discord);
 
     let mut builder = TrayIconBuilder::new()
@@ -144,6 +149,10 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
             let id = event.id.as_ref();
             if id == "open" {
                 show_main(app);
+            } else if id == "elevate" {
+                show_main(app);
+                let _ = app.emit("navigate", "home");
+                tauri::async_runtime::spawn(async { let _ = settings::relaunch_as_admin().await; });
             } else if id == "quit" {
                 app.exit(0);
             } else if let Some(page) = id.strip_prefix("go:") {
@@ -177,6 +186,8 @@ fn tray_set_discord(state: tauri::State<'_, TrayItems>, on: bool) {
 }
 
 pub fn run() {
+    // После перезапуска от администратора закрываем старый экземпляр
+    settings::takeover_from_args();
     tauri::Builder::default()
         .manage(zapret::Zapret::default())
         .manage(settings::SettingsState(Mutex::new(settings::Settings::default())))
@@ -199,6 +210,8 @@ pub fn run() {
             settings::settings_set,
             settings::open_url,
             settings::autostart_exists,
+            settings::is_admin,
+            settings::relaunch_as_admin,
             tray_set_discord,
             zapret::zapret_strategies,
             zapret::zapret_start,

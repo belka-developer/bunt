@@ -3,8 +3,8 @@
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
-        <!-- Бунт пишет в папку modules рядом с exe и запускает WinDivert: нужны права администратора -->
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/>
+        <!-- Бунт стартует без прав администратора (чтобы работал автозапуск) и сам предлагает их дать. Запрет и установка компонентов требуют администратора. -->
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
       </requestedPrivileges>
     </security>
   </trustInfo>

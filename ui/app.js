@@ -293,15 +293,35 @@
       T.core.invoke('settings_get').then(function (s) { S.settings = s; sync(); renderAutostart(); });
     });
   }
-  /* автозапуск живёт в планировщике заданий, а не в «Автозагрузке» диспетчера задач */
+  /* автозапуск: запись в «Автозагрузке» диспетчера задач, Бунт стартует без прав администратора */
   function renderAutostart() {
     var el = $('#autoInfo');
     if (!el) return;
     if (!inTauri) { el.textContent = ''; return; }
-    el.textContent = 'Работает через планировщик заданий Windows (задача «Bunt»), в «Автозагрузке» диспетчера задач её нет. Проверяем…';
+    var base = 'Бунт стартует вместе с Windows в трее и без прав администратора, а в окне предложит их дать. ';
+    el.textContent = base;
     T.core.invoke('autostart_exists').then(function (ok) {
-      el.textContent = 'Работает через планировщик заданий Windows (задача «Bunt»), в «Автозагрузке» диспетчера задач её нет. Сейчас задача: ' + (ok ? 'создана' : 'не создана') + '.';
-    }).catch(function () { el.textContent = ''; });
+      el.textContent = base + (ok ? 'Запись в автозагрузке создана.' : 'Запись в автозагрузке не создана.');
+    }).catch(function () {});
+  }
+  /* права администратора: без них запрет и установка компонентов не работают */
+  function renderAdmin() {
+    var b = $('#adminBanner');
+    if (b) b.hidden = !(inTauri && S.admin === false);
+  }
+  function adminNeeded(quiet) {
+    if (!(inTauri && S.admin === false)) return false;
+    if (!quiet) {
+      toast('Нужны права администратора. Нажмите «Дать права» вверху окна.', 'warn');
+      var b = $('#adminBanner');
+      if (b) { b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash'); }
+    }
+    return true;
+  }
+  function elevate() {
+    T.core.invoke('relaunch_as_admin').then(function () {
+      toast('Подтвердите запрос Windows. Бунт перезапустится с правами администратора.');
+    }).catch(function (e) { toast(String(e).slice(0, 160), 'warn'); });
   }
   var trayLast = null;
   function syncTray() {
@@ -357,7 +377,7 @@
   function renderAll() {
     renderSide(); renderCards(); renderTray(); renderHeads(); renderLog();
     renderInstall(); renderDiscord(); renderTelegram(); renderProfiles('vless'); renderProfiles('wg');
-    renderVersions(); renderNotes(); renderSecurity(); sync(); syncTray();
+    renderVersions(); renderNotes(); renderSecurity(); renderAdmin(); sync(); syncTray();
   }
 
   function go(page) {
@@ -428,6 +448,7 @@
   }
   function realDiscord(on, quiet, skipCheck) {
     if (zBusy) return;
+    if (on && adminNeeded(quiet)) return;
     if (on && !skipCheck) {
       zBusy = true;
       T.core.invoke('zapret_foreign').then(function (f) {
@@ -612,6 +633,7 @@
   }
   function installReal(id) {
     var c = comp(id);
+    if (adminNeeded()) return;
     c.busy = 0;
     addLog({ svc: c.name, m: 'Загрузка из ' + c.src.replace(/ \(GitHub\)/, '') + '…' });
     renderAll();
@@ -750,6 +772,7 @@
     pickWg: function () { $('#wgFile').click(); },
     updateOne: updateOne,
     installComp: installComp,
+    elevate: elevate,
     takeOver: takeOver,
     runSec: runSec,
     exitApp: function () { toast('В настоящем приложении здесь закроется Бунт.'); },
@@ -845,6 +868,7 @@
   if (inTauri) {
     T.core.invoke('app_info').then(function (i) { setAppVersion(i.version); renderAll(); });
     Object.keys(REAL).forEach(function (id) { comp(id).latest = null; comp(id).demo = false; comp(id).sha = '–'; });
+    var adminReady = T.core.invoke('is_admin').then(function (ok) { S.admin = ok; renderAll(); }).catch(function () {});
     T.core.invoke('modules_dir').then(function (p) {
       $$('[data-modpath]').forEach(function (el) { el.hidden = false; el.textContent = 'Папка установки: ' + p; });
     });
@@ -865,9 +889,9 @@
           addLog({ svc: 'Zapret (Discord)', m: 'Запрет уже работал. Бунт подхватил его.', ok: true });
           renderAll();
         } else if (st.enabled) {
-          realDiscord(true, true);          /* поднимаем запрет, который был включён */
+          adminReady.then(function () { realDiscord(true, true); });   /* поднимаем запрет, который был включён */
         } else {
-          checkForeign();                   /* работает не из Бунта: предложить перейти */
+          adminReady.then(function () { if (S.admin !== false) checkForeign(); });   /* работает не из Бунта: предложить перейти */
         }
       }).catch(function () {});
     }).catch(function () { renderAll(); });

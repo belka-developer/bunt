@@ -1,8 +1,8 @@
 //! Настройки Бунта, автозапуск и открытие ссылок.
 //!
 //! Настройки лежат в `%APPDATA%\\dev.belka.bunt\\settings.json`.
-//! Автозапуск сделан задачей планировщика Windows с повышенными правами: так Бунт
-//! стартует при входе в систему без окна UAC (Бунту нужны права администратора).
+//! Автозапуск сделан записью в разделе Run реестра текущего пользователя: она видна в
+//! «Автозагрузке» диспетчера задач. Бунт стартует без прав администратора и предлагает их дать.
 
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf, sync::Mutex};
@@ -52,78 +52,49 @@ fn save(app: &AppHandle, s: &Settings) -> Result<(), String> {
 }
 
 #[cfg_attr(not(windows), allow(dead_code))]
-const TASK: &str = "Bunt";
-
 #[cfg(windows)]
-fn schtasks(args: &[&str]) -> bool {
-    Command::new("schtasks")
+fn run_hidden(program: &str, args: &[&str]) -> Option<String> {
+    Command::new(program)
         .args(args)
         .creation_flags(CREATE_NO_WINDOW)
         .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
 }
 
 #[cfg(windows)]
-fn task_exists() -> bool {
-    schtasks(&["/Query", "/TN", TASK])
-}
+const RUN_KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
 
 #[cfg(windows)]
-fn xml_escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+fn autostart_present() -> bool {
+    run_hidden("reg", &["query", RUN_KEY, "/v", "Bunt"]).is_some()
 }
 
+/// Старые версии (0.1.5) ставили автозапуск задачей планировщика. Убираем её, чтобы Бунт не запускался дважды.
 #[cfg(windows)]
-fn create_task() -> Result<(), String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let xml = format!(
-        r#"<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo><Description>Запуск Бунта при входе в Windows</Description></RegistrationInfo>
-  <Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>
-  <Principals>
-    <Principal id="Author">
-      <GroupId>S-1-5-32-545</GroupId>
-      <RunLevel>HighestAvailable</RunLevel>
-    </Principal>
-  </Principals>
-  <Settings>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
-    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
-    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
-    <AllowStartOnDemand>true</AllowStartOnDemand>
-    <Enabled>true</Enabled>
-  </Settings>
-  <Actions Context="Author">
-    <Exec>
-      <Command>{}</Command>
-      <Arguments>--hidden</Arguments>
-    </Exec>
-  </Actions>
-</Task>"#,
-        xml_escape(&exe.display().to_string())
-    );
-    // schtasks читает XML в UTF-16 с BOM
-    let mut bytes: Vec<u8> = vec![0xFF, 0xFE];
-    for u in xml.encode_utf16() {
-        bytes.extend_from_slice(&u.to_le_bytes());
+fn remove_old_task() {
+    if run_hidden("schtasks", &["/Query", "/TN", "Bunt"]).is_some() {
+        let _ = run_hidden("schtasks", &["/Delete", "/TN", "Bunt", "/F"]);
     }
-    let tmp = std::env::temp_dir().join("bunt-autostart.xml");
-    fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
-    let ok = schtasks(&["/Create", "/TN", TASK, "/XML", &tmp.display().to_string(), "/F"]);
-    let _ = fs::remove_file(&tmp);
-    if ok { Ok(()) } else { Err("Не удалось создать задачу автозапуска. Запустите Бунт от имени администратора.".into()) }
 }
 
+/// Автозапуск: запись в разделе Run текущего пользователя, она видна в «Автозагрузке» диспетчера задач.
+/// Бунт стартует без прав администратора и сам предлагает их дать.
 fn apply_autostart(on: bool) -> Result<(), String> {
     #[cfg(windows)]
     {
+        remove_old_task();
         if on {
-            create_task()
-        } else if task_exists() {
-            if schtasks(&["/Delete", "/TN", TASK, "/F"]) { Ok(()) } else { Err("Не удалось удалить задачу автозапуска".into()) }
+            let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+            let value = format!("\"{}\" --hidden", exe.display());
+            run_hidden("reg", &["add", RUN_KEY, "/v", "Bunt", "/t", "REG_SZ", "/d", &value, "/f"])
+                .map(|_| ())
+                .ok_or_else(|| "Не удалось записать автозапуск в реестр".to_string())
+        } else if autostart_present() {
+            run_hidden("reg", &["delete", RUN_KEY, "/v", "Bunt", "/f"])
+                .map(|_| ())
+                .ok_or_else(|| "Не удалось убрать автозапуск из реестра".to_string())
         } else {
             Ok(())
         }
@@ -135,10 +106,72 @@ fn apply_autostart(on: bool) -> Result<(), String> {
     }
 }
 
-/// Задача должна указывать на текущий exe (путь мог измениться при переустановке).
+/// Запись должна указывать на текущий exe (путь мог измениться при переустановке).
 fn reconcile(s: &Settings) {
     if s.autostart {
         let _ = apply_autostart(true);
+    } else {
+        #[cfg(windows)]
+        remove_old_task();
+    }
+}
+
+/// Запущен ли Бунт с правами администратора.
+pub fn is_admin_sync() -> bool {
+    #[cfg(windows)]
+    {
+        // Уровень целостности «High» (S-1-16-12288) есть только у запущенных от администратора
+        run_hidden("whoami", &["/groups"]).map(|o| o.contains("S-1-16-12288")).unwrap_or(false)
+    }
+    #[cfg(not(windows))]
+    {
+        true
+    }
+}
+
+#[tauri::command]
+pub async fn is_admin() -> Result<bool, String> {
+    Ok(is_admin_sync())
+}
+
+/// Перезапускает Бунт от имени администратора. Новый экземпляр после подтверждения UAC
+/// закрывает старый (`--takeover`). Если подтверждение отклонить, старый продолжает работать.
+#[tauri::command]
+pub async fn relaunch_as_admin() -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let path = exe.display().to_string().replace('\'', "''");
+        let script = format!(
+            "Start-Process -FilePath '{path}' -ArgumentList '--takeover','{}' -Verb RunAs",
+            std::process::id()
+        );
+        Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", &script])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Вызывается при старте: если запущены с `--takeover PID`, закрывает старый (неадминистраторский) экземпляр.
+pub fn takeover_from_args() {
+    #[cfg(windows)]
+    {
+        let args: Vec<String> = std::env::args().collect();
+        let Some(i) = args.iter().position(|a| a == "--takeover") else { return };
+        let Some(pid) = args.get(i + 1).filter(|p| p.chars().all(|c| c.is_ascii_digit())) else { return };
+        let Ok(exe) = std::env::current_exe() else { return };
+        let Some(name) = exe.file_name().map(|n| n.to_string_lossy().to_string()) else { return };
+        // Убеждаемся, что по этому PID действительно наш exe, а не посторонний процесс
+        let filter_pid = format!("PID eq {pid}");
+        let filter_img = format!("IMAGENAME eq {name}");
+        let listed = run_hidden("tasklist", &["/FI", &filter_pid, "/FI", &filter_img, "/NH"]).unwrap_or_default();
+        if listed.to_lowercase().contains(&name.to_lowercase()) {
+            let _ = run_hidden("taskkill", &["/PID", pid, "/F"]);
+            std::thread::sleep(std::time::Duration::from_millis(800));
+        }
     }
 }
 
@@ -172,12 +205,12 @@ pub async fn settings_set(
     }
 }
 
-/// Есть ли задача автозапуска в планировщике заданий Windows.
+/// Есть ли запись автозапуска в реестре.
 #[tauri::command]
 pub async fn autostart_exists() -> Result<bool, String> {
     #[cfg(windows)]
     {
-        Ok(task_exists())
+        Ok(autostart_present())
     }
     #[cfg(not(windows))]
     {

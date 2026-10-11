@@ -72,6 +72,10 @@
         </aside>
 
         <main class="view" id="view">
+          <div class="admin-banner" id="adminBanner" hidden>
+            <span><svg class="ic"><use href="#i-alert"/></svg><b>Бунт запущен без прав администратора.</b> Запрет и установка компонентов без них не работают.</span>
+            <button class="btn sm primary" data-act="elevate">Дать права</button>
+          </div>
 
           <!-- Главная -->
           <section data-page="home">

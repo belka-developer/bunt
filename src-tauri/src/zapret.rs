@@ -243,6 +243,9 @@ pub async fn zapret_start(
     if strategy.contains(['/', '\\']) || strategy.contains("..") || !strategy.starts_with("general") {
         return Err("Неверное имя стратегии".into());
     }
+    if !crate::settings::is_admin_sync() {
+        return Err("Нужны права администратора. Нажмите «Дать права» в верхней части окна Бунта.".into());
+    }
     state.stop();
     if !foreign_winws().is_empty() || service_exists("zapret") {
         return Err("Запрет уже запущен не из Бунта (служба zapret или другой winws.exe). Остановите его, и Бунт сможет запустить свой.".into());
