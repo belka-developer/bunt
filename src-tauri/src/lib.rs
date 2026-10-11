@@ -7,6 +7,7 @@
 mod integrity;
 mod modules;
 mod settings;
+mod telegram;
 mod zapret;
 
 use serde::Serialize;
@@ -123,7 +124,7 @@ fn go_page(app: &AppHandle, page: &str) {
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Открыть Бунт", true, None::<&str>)?;
     let discord = MenuItem::with_id(app, "go:discord", "Запрет Discord и YouTube", true, None::<&str>)?;
-    let telegram = MenuItem::with_id(app, "go:telegram", "Запрет Telegram · скоро", false, None::<&str>)?;
+    let telegram = MenuItem::with_id(app, "go:telegram", "Запрет Telegram", true, None::<&str>)?;
     let vless = MenuItem::with_id(app, "go:vless", "VLESS · скоро", false, None::<&str>)?;
     let dns = MenuItem::with_id(app, "go:dns", "DNS · скоро", false, None::<&str>)?;
     let fptn = MenuItem::with_id(app, "go:fptn", "FPTN · скоро", false, None::<&str>)?;
@@ -224,7 +225,11 @@ pub fn run() {
             zapret::zapret_stop,
             zapret::zapret_status,
             zapret::zapret_foreign,
-            zapret::zapret_take_over
+            zapret::zapret_take_over,
+            telegram::telegram_status,
+            telegram::telegram_start,
+            telegram::telegram_stop,
+            telegram::telegram_set_port
         ])
         .on_window_event(|window, event| {
             if window.label() != "main" {
@@ -260,6 +265,7 @@ pub fn run() {
             // При выходе останавливаем запущенный запрет, чтобы winws не остался висеть.
             if let tauri::RunEvent::Exit = event {
                 app.state::<zapret::Zapret>().stop();
+                telegram::stop();
             }
         });
 }

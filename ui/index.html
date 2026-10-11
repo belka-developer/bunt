@@ -60,7 +60,7 @@
           <nav aria-label="Разделы">
             <button class="nav" data-go="home"><svg class="ic"><use href="#i-home"/></svg>Главная</button>
             <button class="nav" data-go="discord"><svg class="ic"><use href="#i-chat"/></svg>Zapret (Discord)</button>
-            <button class="nav" data-go="telegram"><svg class="ic"><use href="#i-plane"/></svg>Zapret (Telegram)<span class="soon-tag">скоро</span></button>
+            <button class="nav" data-go="telegram"><svg class="ic"><use href="#i-plane"/></svg>Zapret (Telegram)</button>
             <button class="nav" data-go="vless"><svg class="ic"><use href="#i-net"/></svg>VLESS<span class="soon-tag">скоро</span></button>
             <button class="nav" data-go="wg"><svg class="ic"><use href="#i-vpn"/></svg>WireGuard<span class="soon-tag">скоро</span></button>
             <button class="nav" data-go="dns"><svg class="ic"><use href="#i-globe"/></svg>DNS<span class="soon-tag">скоро</span></button>
@@ -165,13 +165,7 @@
           </section>
 
           <!-- Telegram -->
-          <section data-page="telegram" data-soon hidden>
-            <div class="soon">
-              <span class="badge b-telegram"><svg class="ic"><use href="#i-plane"/></svg></span>
-              <span class="tag warn">Скоро</span>
-              <h1>Zapret для Telegram</h1>
-              <p class="sub">Здесь появится локальный прокси для Telegram Desktop. Раздел в разработке.</p>
-            </div>
+          <section data-page="telegram" hidden>
             <div class="page-head">
               <div>
                 <h1>Zapret для Telegram</h1>
@@ -194,21 +188,21 @@
                   <h3>Адрес прокси</h3>
                   <div class="field-row">
                     <input class="field mono" value="127.0.0.1" readonly aria-label="Адрес">
-                    <input class="field mono" id="tgPort" data-bind="telegram.port" inputmode="numeric" maxlength="5" aria-label="Порт" style="flex: 0 1 110px">
+                    <input class="field mono" id="tgPort" inputmode="numeric" maxlength="5" aria-label="Порт" style="flex: 0 1 110px">
                   </div>
                   <div class="field-row mt">
                     <input class="field mono" id="tgLink" readonly aria-label="Ссылка для Telegram">
                     <button class="btn" data-act="copyTg"><svg class="ic"><use href="#i-copy"/></svg>Копировать</button>
                   </div>
-                  <p class="note mt">В Telegram Desktop: Настройки → Продвинутые → Тип соединения → SOCKS5. Либо вставьте ссылку выше в любой чат и нажмите на неё.</p>
+                  <p class="note mt">Включите запрет, затем вставьте ссылку выше в любой чат Telegram (например, в «Избранное») и нажмите на неё: Telegram предложит добавить прокси. Запрет работает через локальный MTProto-прокси, поэтому нужен один раз.</p>
                 </div>
               </div>
               <div class="stack">
                 <div class="panel">
                   <h3>Компонент</h3>
-                  <div class="row"><span class="lbl">Версия</span><span class="val">1.2.3</span></div>
+                  <div class="row"><span class="lbl">Версия</span><span class="val" id="tVer">–</span></div>
                   <div class="row"><span class="lbl">Источник</span><span class="val">Flowseal/tg-ws-proxy</span></div>
-                  <div class="row"><span class="lbl">Режим</span><span class="val">Авто</span></div>
+                  <div class="row"><span class="lbl">Режим</span><span class="val">MTProto-прокси</span></div>
                 </div>
               </div>
             </div>

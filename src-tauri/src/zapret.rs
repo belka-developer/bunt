@@ -139,11 +139,16 @@ fn prepare_lists(dir: &Path, ipset: &str) -> Result<(), String> {
 
 /// Все запущенные winws.exe: (PID, путь к файлу).
 fn list_winws() -> Vec<(u32, String)> {
+    list_procs("winws")
+}
+
+/// Запущенные процессы с этим именем (без .exe): (PID, путь к файлу).
+pub(crate) fn list_procs(name: &str) -> Vec<(u32, String)> {
     #[cfg(windows)]
     {
-        let script = "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Process winws -ErrorAction SilentlyContinue | ForEach-Object { \"$($_.Id)|$($_.Path)\" }";
+        let script = format!("[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Process {name} -ErrorAction SilentlyContinue | ForEach-Object {{ \"$($_.Id)|$($_.Path)\" }}");
         if let Ok(o) = Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", script])
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
             .creation_flags(CREATE_NO_WINDOW)
             .output()
         {
@@ -156,6 +161,7 @@ fn list_winws() -> Vec<(u32, String)> {
                 .collect();
         }
     }
+    let _ = name;
     Vec::new()
 }
 
@@ -164,7 +170,7 @@ fn norm(p: &str) -> String {
 }
 
 /// Запущен ли этот winws из папки modules Бунта.
-fn is_ours(path: &str) -> bool {
+pub(crate) fn is_ours(path: &str) -> bool {
     match crate::modules::modules_root() {
         Ok(root) => norm(path).starts_with(&norm(&root.display().to_string())),
         Err(_) => false,
@@ -195,11 +201,11 @@ fn service_exists(name: &str) -> bool {
     sc(&["query", name]).is_some()
 }
 
-fn kill_pid(pid: u32) {
+pub(crate) fn kill_pid(pid: u32) {
     #[cfg(windows)]
     {
         let _ = Command::new("taskkill")
-            .args(["/PID", &pid.to_string(), "/F"])
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
     }

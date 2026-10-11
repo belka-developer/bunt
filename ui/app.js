@@ -14,7 +14,7 @@
   };
   var IDS = Object.keys(SVC);
   /* разделы-заглушки: чтобы вернуть раздел, уберите его из SOON и удалите data-soon у секции */
-  var SOON = { telegram: true, vless: true, wg: true };
+  var SOON = { vless: true, wg: true };
   /* внутри Tauri доступны настоящие команды, в обычном браузере остаётся макет */
   var T = window.__TAURI__;
   var inTauri = !!(T && T.core && T.core.invoke);
@@ -38,7 +38,7 @@
     page: 'home',
     on: { discord: false, telegram: false, vless: false, wg: false },
     discord: { mode: 'auto', strategy: 'general (ALT2)', game: false, ipset: 'none', lastTest: 'сегодня, 14:32', autoupd: true, ipsetUpdated: 'сегодня, 09:12' },
-    telegram: { port: '1080' },
+    telegram: { port: '1443', link: '' },
     lists: {
       general: { file: 'list-general-user.txt', title: 'Свои домены', hint: 'Домены для обхода, по одному на строку. Поддомены учитываются автоматически.', text: '# по одному домену на строку\nexample.org\ncdn.example.org\n' },
       exclude: { file: 'list-exclude-user.txt', title: 'Исключения доменов', hint: 'Домены, которые не нужно обрабатывать, даже если их IP есть в ipset-all.txt.', text: '' },
@@ -116,7 +116,7 @@
   function renderCards() {
     var meta = {
       discord: function () { return [['Метод', 'winws'], ['Режим', S.discord.mode === 'auto' ? 'Авто' : 'Вручную']]; },
-      telegram: function () { return [['Метод', 'tg-ws-proxy'], ['Режим', 'Авто']]; },
+      telegram: function () { return [['Метод', 'MTProto-прокси'], ['Порт', String(S.telegram.port)]]; },
       vless: function () { return [['Сервер', selName('vless') || 'Не выбран'], ['Профиль', S.sel.vless ? 'Основной' : 'Нет']]; },
       wg: function () { return [['Профиль', selName('wg') || 'Не выбран'], ['Интерфейс', S.sel.wg ? 'wg0' : '–']]; }
     };
@@ -163,7 +163,7 @@
       ['mark', 'Открыть Бунт', 'home'],
       null,
       ['chat', 'Запрет Discord и YouTube' + (installed('discord') ? (S.on.discord ? ' · включён' : ' · выключен') : ''), 'discord'],
-      ['plane', 'Запрет Telegram · скоро', null],
+      ['plane', 'Запрет Telegram' + (installed('telegram') ? (S.on.telegram ? ' · включён' : ' · выключен') : ''), 'telegram'],
       ['net', 'VLESS · скоро', null],
       ['vpn', 'WireGuard · скоро', null],
       ['globe', 'DNS · скоро', null],
@@ -224,8 +224,10 @@
   }
 
   function renderTelegram() {
-    var p = String(S.telegram.port).replace(/\D/g, '') || '1080';
-    $('#tgLink').value = 'tg://socks?server=127.0.0.1&port=' + p;
+    var p = String(S.telegram.port).replace(/\D/g, '') || '1443';
+    $('#tgLink').value = S.telegram.link || (inTauri ? '' : 'tg://proxy?server=127.0.0.1&port=' + p + '&secret=dd00000000000000000000000000000000');
+    var tv = $('#tVer'); if (tv) tv.textContent = comp('telegram').cur || '–';
+    var tp = $('#tgPort'); if (tp && document.activeElement !== tp) tp.value = p;
   }
 
   function renderProfiles(t) {
@@ -272,7 +274,7 @@
   }
   function loadNotes() {
     if (!inTauri) return;
-    ['app', 'discord'].forEach(function (id) {
+    ['app', 'discord', 'telegram'].forEach(function (id) {
       var c = comp(id);
       if (!c || (id !== 'app' && !c.cur)) return;
       T.core.invoke('release_notes', { id: id }).then(function (n) {
@@ -366,7 +368,9 @@
     $('#btnSec').disabled = run;
     var bo = $('#btnSecOnline'); if (bo) bo.disabled = run;
     var fix = $('#secFix');
-    if (fix) fix.innerHTML = (bad && !run && inTauri && installed('discord')) ? '<div class="sec-fix"><span>Файлы запрета отличаются от оригинала. Лучше всего переустановить компонент.</span><button class="btn sm primary" data-act="reinstallAsk" data-arg="discord">Переустановить</button></div>' : '';
+    if (fix) fix.innerHTML = (bad && !run && inTauri) ? ['discord', 'telegram'].filter(installed).map(function (id) {
+      return '<div class="sec-fix"><span>Файлы компонента «' + esc(comp(id).name) + '» отличаются от оригинала. Лучше всего переустановить его.</span><button class="btn sm primary" data-act="reinstallAsk" data-arg="' + id + '">Переустановить</button></div>';
+    }).join('') : '';
     var RES = { ok: 'OK', warn: 'Внимание', bad: 'Нарушено', info: 'Заметка', run: 'Проверяю…', idle: 'Ожидает' };
     var ICO = { ok: 'check', warn: 'alert', bad: 'alert', info: 'shield', idle: 'clock' };
     $('#secList').innerHTML = items.map(function (i) {
@@ -413,6 +417,7 @@
       return false;
     }
     if (inTauri && id === 'discord') { realDiscord(on, quiet); return true; }
+    if (inTauri && id === 'telegram') { realTelegram(on, quiet); return true; }
     S.on[id] = on;
     var n = SVC[id].name;
     if (on) {
@@ -484,6 +489,38 @@
       addLog({ svc: n, m: 'Ошибка: ' + err });
       if (!quiet) toast(String(err).slice(0, 200), 'warn');
     }).then(function () { zBusy = false; renderAll(); });
+  }
+  /* Telegram: локальный MTProto-прокси, права администратора не нужны */
+  var tBusy = false;
+  function applyTg(st) {
+    S.telegram.port = String(st.port);
+    S.telegram.link = st.link || '';
+  }
+  function realTelegram(on, quiet) {
+    if (tBusy) return;
+    tBusy = true;
+    var n = SVC.telegram.name;
+    if (on) addLog({ svc: n, m: 'Запуск прокси…' });
+    T.core.invoke(on ? 'telegram_start' : 'telegram_stop').then(function (st) {
+      applyTg(st);
+      S.on.telegram = on;
+      addLog(on ? { m: 'Прокси запущен на порту ' + st.port + '. Добавьте ссылку в Telegram один раз.', ok: true } : { svc: n, m: 'Остановлено.' });
+    }).catch(function (err) {
+      S.on.telegram = false;
+      addLog({ svc: n, m: 'Ошибка: ' + err });
+      if (!quiet) toast(String(err).slice(0, 200), 'warn');
+    }).then(function () { tBusy = false; renderAll(); });
+  }
+  function setTgPort(v) {
+    var port = parseInt(v, 10);
+    if (!inTauri || !installed('telegram')) return;
+    if (!(port >= 1024 && port <= 65535)) { toast('Порт должен быть от 1024 до 65535.', 'warn'); renderAll(); return; }
+    T.core.invoke('telegram_set_port', { port: port }).then(function (st) {
+      applyTg(st);
+      S.on.telegram = st.running;
+      addLog({ svc: SVC.telegram.name, m: 'Порт изменён на ' + st.port + (st.running ? '. Прокси перезапущен, обновите ссылку в Telegram.' : '.') });
+      toast('Порт изменён. Обновите ссылку в Telegram.');
+    }).catch(function (err) { toast(String(err).slice(0, 200), 'warn'); }).then(renderAll);
   }
   function restartDiscord() {
     if (!inTauri || !S.on.discord) return;
@@ -634,7 +671,7 @@
     });
   }
   /* настоящие компоненты внутри Tauri: пока только запрет для Discord и YouTube */
-  var REAL = { discord: true };
+  var REAL = { discord: true, telegram: true };
   function refreshLatest(id) {
     return T.core.invoke('latest_component', { id: id }).then(function (l) {
       var c = comp(id);
@@ -665,7 +702,7 @@
   function reinstallAsk(id) {
     var c = comp(id);
     openModal('Переустановить: ' + c.name,
-      '<p>Файлы будут скачаны с GitHub заново (последняя версия) и заменят установленные. Если запрет был включён, он перезапустится.</p><p class="note">Ваши списки доменов и IP сохранятся.</p>',
+      '<p>Файлы будут скачаны с GitHub заново (последняя версия) и заменят установленные. Если запрет был включён, он перезапустится.</p><p class="note">' + (id === 'telegram' ? 'Порт и ссылка для Telegram останутся прежними.' : 'Ваши списки доменов и IP сохранятся.') + '</p>',
       '<button class="btn" data-act="closeModal">Отмена</button><button class="btn primary" data-act="reinstallDo" data-arg="' + id + '">Переустановить</button>');
   }
   function reinstallDo(id) {
@@ -681,7 +718,7 @@
       addLog({ svc: c.name, m: 'Переустановлено: ' + v + '. Хеш проверен.', ok: true });
       toast(c.name + ': переустановлено');
       renderAll();
-      if (was) realDiscord(true, true);
+      if (was) { if (id === 'telegram') realTelegram(true, true); else realDiscord(true, true); }
     }).catch(function (err) {
       c.busy = null;
       addLog({ svc: c.name, m: 'Ошибка переустановки: ' + err });
@@ -692,7 +729,7 @@
   function uninstallAsk(id) {
     var c = comp(id);
     openModal('Удалить: ' + c.name,
-      '<p>Запрет будет остановлен, а все файлы компонента удалены из папки <span class="mono">modules</span>, в том числе ваши списки доменов и IP.</p><p class="note">Потом его можно установить заново кнопкой «Установить».</p>',
+      '<p>Запрет будет остановлен, а все файлы компонента удалены из папки <span class="mono">modules</span>' + (id === 'telegram' ? ', в том числе настройки прокси (порт и секрет). Ссылку в Telegram придётся добавить заново.' : ', в том числе ваши списки доменов и IP.') + '</p><p class="note">Потом его можно установить заново кнопкой «Установить».</p>',
       '<button class="btn" data-act="closeModal">Отмена</button><button class="btn danger" data-act="uninstallDo" data-arg="' + id + '">Удалить</button>');
   }
   function uninstallDo(id) {
@@ -701,6 +738,7 @@
     if (!c || c.busy != null || adminNeeded()) return;
     T.core.invoke('uninstall_component', { id: id }).then(function () {
       c.cur = null; c.next = null; S.on[id] = false;
+      if (id === 'telegram') S.telegram.link = '';
       S.sec.items = [];
       addLog({ svc: c.name, m: 'Компонент удалён.' });
       toast(c.name + ' удалён');
@@ -935,7 +973,10 @@
   });
   document.addEventListener('input', function (e) {
     var el = e.target;
-    if (el.id === 'tgPort') { S.telegram.port = el.value.replace(/\D/g, '').slice(0, 5); renderTelegram(); }
+    if (el.id === 'tgPort') el.value = el.value.replace(/\D/g, '').slice(0, 5);
+  });
+  document.addEventListener('change', function (e) {
+    if (e.target.id === 'tgPort') setTgPort(e.target.value);
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
   $('#modal').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
@@ -977,6 +1018,14 @@
       renderAll();
       Object.keys(REAL).forEach(function (id) { refreshLatest(id).then(renderAll); });
       loadNotes();
+      if (comp('telegram').cur) {
+        T.core.invoke('telegram_status').then(function (st) {
+          applyTg(st);
+          if (st.running) { S.on.telegram = true; renderAll(); }
+          else if (st.enabled) realTelegram(true, true);
+          else renderAll();
+        }).catch(function () {});
+      }
       if (!comp('discord').cur) return;
       /* запрет мог остаться включённым (обновление Бунта) или быть включён пользователем до выхода */
       T.core.invoke('zapret_status').then(function (st) {

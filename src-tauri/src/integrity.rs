@@ -17,7 +17,7 @@ const MANIFEST: &str = ".bunt-manifest.json";
 /// Файлы, которые меняются при обычной работе, в хеши не входят.
 fn skipped(rel: &str) -> bool {
     let r = rel.replace('\\', "/").to_lowercase();
-    r == MANIFEST || r == "winws.log" || r == "lists/ipset-all.txt" || r.ends_with("-user.txt")
+    r == MANIFEST || r.starts_with("tgwsproxy_data/") || r == "winws.log" || r == "lists/ipset-all.txt" || r.ends_with("-user.txt")
 }
 
 fn hash_file(path: &Path) -> Result<String, String> {
@@ -172,17 +172,27 @@ fn check_signature(label: &str, file: &str, path: &Path) -> Option<Item> {
 
 fn run_check() -> Vec<Item> {
     let mut out = Vec::new();
-    match crate::modules::active_dir("discord") {
-        Ok(dir) => {
-            let label = "Запрет Discord и YouTube";
-            out.extend(check_files(label, &dir));
-            for (file, rel) in [("winws.exe", "bin/winws.exe"), ("WinDivert64.sys", "bin/WinDivert64.sys")] {
-                if let Some(i) = check_signature(label, file, &dir.join(rel)) {
-                    out.push(i);
-                }
+    let mut any = false;
+    if let Ok(dir) = crate::modules::active_dir("discord") {
+        any = true;
+        let label = "Запрет Discord и YouTube";
+        out.extend(check_files(label, &dir));
+        for (file, rel) in [("winws.exe", "bin/winws.exe"), ("WinDivert64.sys", "bin/WinDivert64.sys")] {
+            if let Some(i) = check_signature(label, file, &dir.join(rel)) {
+                out.push(i);
             }
         }
-        Err(_) => out.push(item("Компоненты", "info", Some("Нет установленных компонентов для проверки.".into()))),
+    }
+    if let Ok(dir) = crate::modules::active_dir("telegram") {
+        any = true;
+        let label = "Запрет Telegram";
+        out.extend(check_files(label, &dir));
+        if let Some(i) = check_signature(label, crate::telegram::EXE, &dir.join(crate::telegram::EXE)) {
+            out.push(i);
+        }
+    }
+    if !any {
+        out.push(item("Компоненты", "info", Some("Нет установленных компонентов для проверки.".into())));
     }
     out
 }
@@ -227,17 +237,29 @@ fn hash_zip(bytes: &[u8]) -> Result<BTreeMap<String, String>, String> {
 }
 
 async fn verify_online() -> Vec<Item> {
-    let label = "Запрет Discord и YouTube";
+    let mut out = Vec::new();
+    for (id, label) in [("discord", "Запрет Discord и YouTube"), ("telegram", "Запрет Telegram")] {
+        if crate::modules::active_dir(id).is_ok() {
+            out.extend(verify_one(id, label).await);
+        }
+    }
+    if out.is_empty() {
+        out.push(item("Компоненты", "info", Some("Нет установленных компонентов для проверки.".into())));
+    }
+    out
+}
+
+async fn verify_one(id: &'static str, label: &str) -> Vec<Item> {
     let title = format!("{label}: сверка с оригиналом на GitHub");
-    let Ok(dir) = crate::modules::active_dir("discord") else {
-        return vec![item("Компоненты", "info", Some("Нет установленных компонентов для проверки.".into()))];
+    let Ok(dir) = crate::modules::active_dir(id) else {
+        return Vec::new();
     };
     let version = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
 
     // Тег релиза бывает с «v» и без неё
     let mut release = None;
     for tag in [format!("v{version}"), version.clone()] {
-        if let Ok(r) = crate::modules::fetch_release_tag("discord", &tag).await {
+        if let Ok(r) = crate::modules::fetch_release_tag(id, &tag).await {
             release = Some(r);
             break;
         }
@@ -245,7 +267,7 @@ async fn verify_online() -> Vec<Item> {
     let Some(release) = release else {
         return vec![item(&title, "warn", Some(format!("Не нашёл на GitHub релиз версии {version} или нет связи. Сверка не выполнена.")))];
     };
-    let (url, digest) = match crate::modules::pick_archive(&release) {
+    let (url, digest) = match crate::modules::pick_for(id, &release) {
         Ok(x) => x,
         Err(e) => return vec![item(&title, "warn", Some(e))],
     };
@@ -264,7 +286,16 @@ async fn verify_online() -> Vec<Item> {
         None => weak = true,
     }
 
-    let reference = match tauri::async_runtime::spawn_blocking(move || hash_zip(&bytes)).await {
+    let reference = match tauri::async_runtime::spawn_blocking(move || {
+        if id == "telegram" {
+            // в релизе один exe: эталон это его хеш
+            Ok(BTreeMap::from([(crate::telegram::EXE.to_string(), hex::encode(Sha256::digest(&bytes)))]))
+        } else {
+            hash_zip(&bytes)
+        }
+    })
+    .await
+    {
         Ok(Ok(r)) => r,
         Ok(Err(e)) => return vec![item(&title, "warn", Some(e))],
         Err(e) => return vec![item(&title, "warn", Some(e.to_string()))],

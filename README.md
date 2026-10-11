@@ -1,14 +1,14 @@
 # Бунт
 
-Единый центр сетевых инструментов для Windows. Первым внутри будет запрет для Discord и YouTube на основе [zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube), позже Telegram, VLESS и WireGuard.
+Единый центр сетевых инструментов для Windows. Первым внутри будет запрет для Discord и YouTube на основе [zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube), Telegram на основе [tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy), позже VLESS и WireGuard.
 
 Приложение написано на Tauri 2 (Rust и обычные HTML, CSS, JS) и обновляется само из GitHub Releases, когда пользователь нажимает кнопку.
 
 > **Статус: прототип.**
 > Настоящее: окно, значок в трее, один экземпляр, проверка и установка обновлений самого Бунта.
 > Макет с примерными данными: запрет Discord и YouTube, версии компонентов (помечены «демо»), проверка целостности, настройки. Настройки пока не сохраняются между запусками.
-> Разделы Telegram, VLESS и WireGuard показывают «Скоро».
-> Запрет для Discord/YouTube и для Telegram по умолчанию не установлен: пользователь сам нажимает «Установить» на главной или в разделе. Для Discord/YouTube установка настоящая: Бунт берёт последний релиз `Flowseal/zapret-discord-youtube`, проверяет хеш, распаковывает в `modules\discord\<версия>\` рядом с exe. Для Telegram установка пока имитируется.
+> Разделы VLESS, WireGuard, DNS и FPTN показывают «Скоро».
+> Запрет для Discord/YouTube и для Telegram по умолчанию не установлен: пользователь сам нажимает «Установить» на главной или в разделе. Для Discord/YouTube установка настоящая: Бунт берёт последний релиз `Flowseal/zapret-discord-youtube`, проверяет хеш, распаковывает в `modules\discord\<версия>\` рядом с exe. Для Telegram Бунт берёт `TgWsProxy_windows.exe` из последнего релиза `Flowseal/tg-ws-proxy` и кладёт в `modules\telegram\<версия>\`; настройки прокси лежат в `TgWsProxy_data` рядом.
 
 ## Запуск для разработки
 
