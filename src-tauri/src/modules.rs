@@ -50,7 +50,7 @@ fn write_state(root: &Path, state: &State) -> Result<(), String> {
     fs::rename(&tmp, root.join("state.json")).map_err(|e| e.to_string())
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub(crate) struct Release {
     pub(crate) tag_name: String,
     #[serde(default)]
@@ -64,7 +64,7 @@ pub(crate) struct Release {
     pub(crate) assets: Vec<Asset>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub(crate) struct Asset {
     pub(crate) name: String,
     pub(crate) browser_download_url: String,
@@ -105,26 +105,84 @@ async fn fetch_release(id: &str) -> Result<Release, String> {
 }
 
 async fn fetch_release_of(owner: &str, repo: &str) -> Result<Release, String> {
-    fetch_release_url(format!("https://api.github.com/repos/{owner}/{repo}/releases/latest")).await
+    fetch_release_url(owner, repo, None).await
 }
 
 /// Релиз с конкретным тегом (нужен, чтобы сверить установленную версию с оригиналом).
 pub(crate) async fn fetch_release_tag(id: &str, tag: &str) -> Result<Release, String> {
     let (owner, repo) = source(id)?;
-    fetch_release_url(format!("https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}")).await
+    fetch_release_url(owner, repo, Some(tag)).await
 }
 
-async fn fetch_release_url(url: String) -> Result<Release, String> {
+fn archive_url(owner: &str, repo: &str, tag: &str) -> String {
+    format!("https://github.com/{owner}/{repo}/archive/refs/tags/{tag}.zip")
+}
+
+fn cache() -> &'static std::sync::Mutex<std::collections::HashMap<String, (std::time::Instant, Release)>> {
+    static C: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, (std::time::Instant, Release)>>> = std::sync::OnceLock::new();
+    C.get_or_init(Default::default)
+}
+
+/// Релиз через API GitHub. Ответы кэшируются на 10 минут: лимит API без входа всего 60 запросов в час на адрес,
+/// а Бунт спрашивает один и тот же релиз для версии, описания и проверок. Если лимит исчерпан (403),
+/// тег берётся с обычной страницы релиза, а файлы качаются по прямой ссылке, это лимитом не считается.
+async fn fetch_release_url(owner: &str, repo: &str, tag: Option<&str>) -> Result<Release, String> {
+    let key = format!("{owner}/{repo}/{}", tag.unwrap_or("latest"));
+    if let Some((at, rel)) = cache().lock().unwrap().get(&key) {
+        if at.elapsed() < std::time::Duration::from_secs(600) {
+            return Ok(rel.clone());
+        }
+    }
+    let url = match tag {
+        Some(t) => format!("https://api.github.com/repos/{owner}/{repo}/releases/tags/{t}"),
+        None => format!("https://api.github.com/repos/{owner}/{repo}/releases/latest"),
+    };
     let resp = client()?
         .get(url)
         .header("Accept", "application/vnd.github+json")
         .send()
         .await
         .map_err(|e| format!("Нет связи с GitHub: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("GitHub ответил: {}", resp.status()));
-    }
-    resp.json().await.map_err(|e| format!("Непонятный ответ GitHub: {e}"))
+    let status = resp.status();
+    let rel = if status.is_success() {
+        let mut rel: Release = resp.json().await.map_err(|e| format!("Непонятный ответ GitHub: {e}"))?;
+        // архив с обычного адреса вместо API, чтобы скачивание не тратило лимит
+        rel.zipball_url = Some(archive_url(owner, repo, &rel.tag_name));
+        rel
+    } else if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        fallback_release(owner, repo, tag).await.map_err(|e| format!("GitHub ограничил число запросов (403), попробуйте позже ({e})"))?
+    } else {
+        return Err(format!("GitHub ответил: {status}"));
+    };
+    cache().lock().unwrap().insert(key, (std::time::Instant::now(), rel.clone()));
+    Ok(rel)
+}
+
+/// Релиз без API: тег из перенаправления страницы /releases/latest и архив по прямой ссылке.
+async fn fallback_release(owner: &str, repo: &str, tag: Option<&str>) -> Result<Release, String> {
+    let tag = match tag {
+        Some(t) => t.to_string(),
+        None => {
+            let resp = client()?
+                .get(format!("https://github.com/{owner}/{repo}/releases/latest"))
+                .send()
+                .await
+                .map_err(|e| format!("Нет связи с GitHub: {e}"))?;
+            if !resp.status().is_success() {
+                return Err(format!("страница релиза: {}", resp.status()));
+            }
+            let path = resp.url().path().to_string();
+            path.rsplit_once("/tag/").map(|x| x.1.trim_end_matches('/').to_string()).filter(|t| !t.is_empty()).ok_or("релизов нет")?
+        }
+    };
+    Ok(Release {
+        zipball_url: Some(archive_url(owner, repo, &tag)),
+        html_url: Some(format!("https://github.com/{owner}/{repo}/releases/tag/{tag}")),
+        tag_name: tag,
+        body: None,
+        published_at: None,
+        assets: Vec::new(),
+    })
 }
 
 /// Архив релиза и его хеш, если GitHub его отдаёт.
