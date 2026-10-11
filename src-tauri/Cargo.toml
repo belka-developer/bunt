@@ -1,6 +1,6 @@
 [package]
 name = "bunt"
-version = "0.1.5"
+version = "0.1.6"
 description = "Бунт — единый центр сетевых инструментов"
 authors = ["belka-developer"]
 license = "GPL-3.0-or-later"

@@ -288,10 +288,20 @@
   /* настройки сохраняются сразу при переключении */
   function saveSettings() {
     if (!inTauri) return;
-    T.core.invoke('settings_set', { settings: S.settings }).then(function (s) { S.settings = s; sync(); }).catch(function (err) {
+    T.core.invoke('settings_set', { settings: S.settings }).then(function (s) { S.settings = s; sync(); renderAutostart(); }).catch(function (err) {
       toast(String(err).slice(0, 200), 'warn');
-      T.core.invoke('settings_get').then(function (s) { S.settings = s; sync(); });
+      T.core.invoke('settings_get').then(function (s) { S.settings = s; sync(); renderAutostart(); });
     });
+  }
+  /* автозапуск живёт в планировщике заданий, а не в «Автозагрузке» диспетчера задач */
+  function renderAutostart() {
+    var el = $('#autoInfo');
+    if (!el) return;
+    if (!inTauri) { el.textContent = ''; return; }
+    el.textContent = 'Работает через планировщик заданий Windows (задача «Bunt»), в «Автозагрузке» диспетчера задач её нет. Проверяем…';
+    T.core.invoke('autostart_exists').then(function (ok) {
+      el.textContent = 'Работает через планировщик заданий Windows (задача «Bunt»), в «Автозагрузке» диспетчера задач её нет. Сейчас задача: ' + (ok ? 'создана' : 'не создана') + '.';
+    }).catch(function () { el.textContent = ''; });
   }
   var trayLast = null;
   function syncTray() {
@@ -877,6 +887,7 @@
     T.core.invoke('settings_get').then(function (s) { S.settings = s; }).catch(function () {}).then(function () {
       startPending = false;
       sync();
+      renderAutostart();
       if (S.settings.autoupdate) checkUpdates(true); else renderAll();
     });
   }

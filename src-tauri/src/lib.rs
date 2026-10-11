@@ -198,6 +198,7 @@ pub fn run() {
             settings::settings_get,
             settings::settings_set,
             settings::open_url,
+            settings::autostart_exists,
             tray_set_discord,
             zapret::zapret_strategies,
             zapret::zapret_start,

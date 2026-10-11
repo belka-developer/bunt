@@ -172,6 +172,19 @@ pub async fn settings_set(
     }
 }
 
+/// Есть ли задача автозапуска в планировщике заданий Windows.
+#[tauri::command]
+pub async fn autostart_exists() -> Result<bool, String> {
+    #[cfg(windows)]
+    {
+        Ok(task_exists())
+    }
+    #[cfg(not(windows))]
+    {
+        Ok(false)
+    }
+}
+
 /// Открывает в браузере только известные ссылки проекта.
 #[tauri::command]
 pub fn open_url(url: String) -> Result<(), String> {
