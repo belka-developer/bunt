@@ -304,7 +304,9 @@
                 <div><h2 id="secTitle" style="font-size:18px;font-weight:600"></h2><p class="note" id="secText"></p></div>
               </div>
               <div class="sec-list" id="secList"></div>
-              <div class="btnrow"><button class="btn primary" id="btnSec" data-act="runSec"><svg class="ic"><use href="#i-shield"/></svg>Запустить проверку</button><span class="note" style="align-self:center">Последняя проверка: <span id="secLast"></span></span></div>
+              <div id="secFix"></div>
+              <div class="btnrow"><button class="btn primary" id="btnSec" data-act="runSec"><svg class="ic"><use href="#i-shield"/></svg>Быстрая проверка</button><button class="btn" id="btnSecOnline" data-act="runSecOnline"><svg class="ic"><use href="#i-refresh"/></svg>Сверить с GitHub</button><span class="note" style="align-self:center">Последняя проверка: <span id="secLast"></span></span></div>
+              <p class="note mt">Быстрая проверка сравнивает файлы с хешами, записанными при установке. «Сверить с GitHub» скачивает оригинальный релиз и сверяет с ним: она ловит и подмену самого списка хешей, но качает архив (около 10 МБ).</p>
             </div>
           </section>
 

@@ -193,6 +193,120 @@ pub async fn integrity_check() -> Result<Vec<Item>, String> {
     tauri::async_runtime::spawn_blocking(run_check).await.map_err(|e| e.to_string())
 }
 
+/// Хеши файлов из zip-архива релиза, прямо из памяти. Вложенная общая папка (как у zipball) отбрасывается.
+fn hash_zip(bytes: &[u8]) -> Result<BTreeMap<String, String>, String> {
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| format!("Архив повреждён: {e}"))?;
+    let mut files: Vec<(String, String)> = Vec::new();
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
+        if entry.is_dir() {
+            continue;
+        }
+        let Some(name) = entry.enclosed_name() else {
+            return Err("В архиве небезопасный путь".into());
+        };
+        let rel = name.display().to_string().replace('\\', "/");
+        let mut h = Sha256::new();
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            let n = entry.read(&mut buf).map_err(|e| e.to_string())?;
+            if n == 0 {
+                break;
+            }
+            h.update(&buf[..n]);
+        }
+        files.push((rel, hex::encode(h.finalize())));
+    }
+    let first: std::collections::BTreeSet<&str> = files.iter().filter_map(|(p, _)| p.split('/').next()).collect();
+    let strip = first.len() == 1 && files.iter().all(|(p, _)| p.contains('/'));
+    Ok(files
+        .into_iter()
+        .map(|(p, h)| (if strip { p.split_once('/').map(|x| x.1.to_string()).unwrap_or(p) } else { p }, h))
+        .filter(|(p, _)| !skipped(p))
+        .collect())
+}
+
+async fn verify_online() -> Vec<Item> {
+    let label = "Запрет Discord и YouTube";
+    let title = format!("{label}: сверка с оригиналом на GitHub");
+    let Ok(dir) = crate::modules::active_dir("discord") else {
+        return vec![item("Компоненты", "info", Some("Нет установленных компонентов для проверки.".into()))];
+    };
+    let version = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+
+    // Тег релиза бывает с «v» и без неё
+    let mut release = None;
+    for tag in [format!("v{version}"), version.clone()] {
+        if let Ok(r) = crate::modules::fetch_release_tag("discord", &tag).await {
+            release = Some(r);
+            break;
+        }
+    }
+    let Some(release) = release else {
+        return vec![item(&title, "warn", Some(format!("Не нашёл на GitHub релиз версии {version} или нет связи. Сверка не выполнена.")))];
+    };
+    let (url, digest) = match crate::modules::pick_archive(&release) {
+        Ok(x) => x,
+        Err(e) => return vec![item(&title, "warn", Some(e))],
+    };
+    let bytes = match crate::modules::download_bytes(&url).await {
+        Ok(b) => b,
+        Err(e) => return vec![item(&title, "warn", Some(format!("{e}. Сверка не выполнена.")))],
+    };
+    // Эталон надёжен, только если архив совпал с хешем, который сообщает GitHub
+    let mut weak = false;
+    match digest.as_deref().and_then(|d| d.strip_prefix("sha256:")) {
+        Some(expected) => {
+            if !hex::encode(Sha256::digest(&bytes)).eq_ignore_ascii_case(expected) {
+                return vec![item(&title, "bad", Some("Скачанный архив не совпал с хешем GitHub. Сверке верить нельзя, проверьте соединение.".into()))];
+            }
+        }
+        None => weak = true,
+    }
+
+    let reference = match tauri::async_runtime::spawn_blocking(move || hash_zip(&bytes)).await {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => return vec![item(&title, "warn", Some(e))],
+        Err(e) => return vec![item(&title, "warn", Some(e.to_string()))],
+    };
+    let dir2 = dir.clone();
+    let current = match tauri::async_runtime::spawn_blocking(move || hash_dir(&dir2)).await {
+        Ok(Ok(c)) => c,
+        Ok(Err(e)) => return vec![item(&title, "bad", Some(format!("Не удалось прочитать файлы: {e}")))],
+        Err(e) => return vec![item(&title, "warn", Some(e.to_string()))],
+    };
+
+    let changed: Vec<String> = reference.iter().filter(|(k, v)| current.get(*k).map(|c| c != *v).unwrap_or(false)).map(|(k, _)| k.clone()).collect();
+    let missing: Vec<String> = reference.keys().filter(|k| !current.contains_key(*k)).cloned().collect();
+    let added: Vec<String> = current.keys().filter(|k| !reference.contains_key(*k)).cloned().collect();
+
+    let mut out = Vec::new();
+    if changed.is_empty() && missing.is_empty() {
+        let note = format!("Файлов сверено: {}. Все совпадают с оригинальным релизом {}.{}", reference.len(), version, if weak { " GitHub не сообщил хеш архива, поэтому эталон менее надёжен." } else { "" });
+        out.push(item(&title, if weak { "info" } else { "ok" }, Some(note)));
+    } else {
+        let mut parts = Vec::new();
+        if !changed.is_empty() {
+            parts.push(format!("отличаются от оригинала: {}", names(&changed)));
+        }
+        if !missing.is_empty() {
+            parts.push(format!("пропали: {}", names(&missing)));
+        }
+        out.push(item(&title, "bad", Some(format!("{}. Это может быть подмена файлов. Переустановите компонент.", parts.join("; ")))));
+    }
+    if !added.is_empty() {
+        out.push(item(&format!("{label}: лишние файлы"), "warn", Some(format!("Есть файлы, которых нет в оригинальном релизе: {}.", names(&added)))));
+    }
+    out
+}
+
+/// Сверка установленных файлов с оригинальным релизом на GitHub. Не зависит от файлов на диске,
+/// поэтому ловит и подмену списка хешей. Скачивает архив релиза.
+#[tauri::command]
+pub async fn integrity_verify_online() -> Result<Vec<Item>, String> {
+    Ok(verify_online().await)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,5 +346,26 @@ mod tests {
         assert_eq!(r[0].state, "info");
         assert!(dir.join(MANIFEST).exists());
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    fn make_zip(files: &[(&str, &[u8])]) -> Vec<u8> {
+        use std::io::Write;
+        let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let opts = zip::write::SimpleFileOptions::default();
+        for (name, data) in files {
+            w.start_file(*name, opts).unwrap();
+            w.write_all(data).unwrap();
+        }
+        w.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn hashes_zip_with_and_without_top_folder() {
+        let flat = hash_zip(&make_zip(&[("bin/winws.exe", b"a"), ("general.bat", b"b"), ("lists/ipset-all.txt", b"c")])).unwrap();
+        assert!(flat.contains_key("bin/winws.exe") && flat.contains_key("general.bat"));
+        assert!(!flat.contains_key("lists/ipset-all.txt"), "изменяемые файлы в эталон не входят");
+
+        let nested = hash_zip(&make_zip(&[("repo-1.0/bin/winws.exe", b"a"), ("repo-1.0/general.bat", b"b")])).unwrap();
+        assert_eq!(nested, hash_zip(&make_zip(&[("bin/winws.exe", b"a"), ("general.bat", b"b")])).unwrap());
     }
 }

@@ -348,7 +348,9 @@
         '<span class="pn"><b>' + c.name + (appMode && c.demo ? ' <span class="tag">демо</span>' : '') + '</b><small>' + esc(c.src) + '</small></span></div>' +
         '<div class="vcell"><small>Установлено</small><span class="v">' + (c.cur || 'Не установлено') + '</span></div>' +
         '<div class="vcell"><small>На GitHub</small><span class="v ' + (c.next ? 'new' : '') + '">' + latest + '</span></div>' +
-        '<div class="vstat">' + stat + '</div></div>';
+        '<div class="vstat">' + stat + '</div>' +
+        (inTauri && REAL[c.id] && c.cur && c.busy == null ? '<div class="vmore"><button class="btn sm" data-act="reinstallAsk" data-arg="' + c.id + '">Переустановить</button><button class="btn sm danger" data-act="uninstallAsk" data-arg="' + c.id + '">Удалить</button></div>' : '') +
+        '</div>';
     }).join('');
   }
 
@@ -362,6 +364,9 @@
     $('#secText').textContent = run ? 'Сверяем хеши и подписи компонентов.' : !done ? 'Нажмите «Запустить проверку».' : bad ? 'Файлы отличаются от тех, что были при установке. Переустановите компонент.' : warn ? 'Подробности в списке ниже.' : 'Файлы совпадают с записанными при установке.';
     $('#secLast').textContent = S.sec.last;
     $('#btnSec').disabled = run;
+    var bo = $('#btnSecOnline'); if (bo) bo.disabled = run;
+    var fix = $('#secFix');
+    if (fix) fix.innerHTML = (bad && !run && inTauri && installed('discord')) ? '<div class="sec-fix"><span>Файлы запрета отличаются от оригинала. Лучше всего переустановить компонент.</span><button class="btn sm primary" data-act="reinstallAsk" data-arg="discord">Переустановить</button></div>' : '';
     var RES = { ok: 'OK', warn: 'Внимание', bad: 'Нарушено', info: 'Заметка', run: 'Проверяю…', idle: 'Ожидает' };
     var ICO = { ok: 'check', warn: 'alert', bad: 'alert', info: 'shield', idle: 'clock' };
     $('#secList').innerHTML = items.map(function (i) {
@@ -656,6 +661,54 @@
       renderAll();
     });
   }
+  /* переустановка и удаление компонентов */
+  function reinstallAsk(id) {
+    var c = comp(id);
+    openModal('Переустановить: ' + c.name,
+      '<p>Файлы будут скачаны с GitHub заново (последняя версия) и заменят установленные. Если запрет был включён, он перезапустится.</p><p class="note">Ваши списки доменов и IP сохранятся.</p>',
+      '<button class="btn" data-act="closeModal">Отмена</button><button class="btn primary" data-act="reinstallDo" data-arg="' + id + '">Переустановить</button>');
+  }
+  function reinstallDo(id) {
+    closeModal();
+    var c = comp(id);
+    if (!c || c.busy != null || adminNeeded()) return;
+    var was = !!S.on[id];
+    c.busy = 0;
+    addLog({ svc: c.name, m: 'Переустановка: загрузка из ' + c.src.replace(/ \(GitHub\)/, '') + '…' });
+    renderAll();
+    T.core.invoke('install_component', { id: id, force: true }).then(function (v) {
+      c.cur = v; c.latest = v; c.next = null; c.busy = null; S.on[id] = false;
+      addLog({ svc: c.name, m: 'Переустановлено: ' + v + '. Хеш проверен.', ok: true });
+      toast(c.name + ': переустановлено');
+      renderAll();
+      if (was) realDiscord(true, true);
+    }).catch(function (err) {
+      c.busy = null;
+      addLog({ svc: c.name, m: 'Ошибка переустановки: ' + err });
+      toast('Не удалось переустановить: ' + String(err).slice(0, 160), 'warn');
+      renderAll();
+    });
+  }
+  function uninstallAsk(id) {
+    var c = comp(id);
+    openModal('Удалить: ' + c.name,
+      '<p>Запрет будет остановлен, а все файлы компонента удалены из папки <span class="mono">modules</span>, в том числе ваши списки доменов и IP.</p><p class="note">Потом его можно установить заново кнопкой «Установить».</p>',
+      '<button class="btn" data-act="closeModal">Отмена</button><button class="btn danger" data-act="uninstallDo" data-arg="' + id + '">Удалить</button>');
+  }
+  function uninstallDo(id) {
+    closeModal();
+    var c = comp(id);
+    if (!c || c.busy != null || adminNeeded()) return;
+    T.core.invoke('uninstall_component', { id: id }).then(function () {
+      c.cur = null; c.next = null; S.on[id] = false;
+      S.sec.items = [];
+      addLog({ svc: c.name, m: 'Компонент удалён.' });
+      toast(c.name + ' удалён');
+      renderAll();
+    }).catch(function (err) {
+      toast('Не удалось удалить: ' + String(err).slice(0, 180), 'warn');
+    });
+  }
   function installComp(id) {
     var c = comp(id);
     if (!c || c.cur || c.busy != null) return;
@@ -707,6 +760,24 @@
   }
 
   /* проверка целостности */
+  function runSecOnline() {
+    if (S.sec.running) return;
+    if (!inTauri) { toast('Сверка с GitHub работает только в приложении', 'warn'); return; }
+    S.sec.running = true;
+    S.sec.items = [{ t: 'Скачиваем оригинальный релиз и сверяем файлы…', st: 'run' }];
+    renderSecurity();
+    T.core.invoke('integrity_verify_online').then(function (list) {
+      S.sec.items = list.map(function (r) { return { t: r.title, st: r.state, note: r.note }; });
+      var bad = list.filter(function (r) { return r.state === 'bad'; }).length;
+      addLog(bad ? { m: 'Сверка с GitHub: найдены отличия от оригинала (' + bad + ').' } : { m: 'Сверка с GitHub завершена.', ok: true });
+    }).catch(function (err) {
+      S.sec.items = [{ t: 'Сверка не выполнена', st: 'bad', note: String(err) }];
+    }).then(function () {
+      S.sec.running = false;
+      S.sec.last = nowShort();
+      renderSecurity();
+    });
+  }
   function runSec() {
     if (S.sec.running) return;
     if (inTauri) {
@@ -799,6 +870,11 @@
     elevate: elevate,
     takeOver: takeOver,
     runSec: runSec,
+    runSecOnline: runSecOnline,
+    reinstallAsk: reinstallAsk,
+    reinstallDo: reinstallDo,
+    uninstallAsk: uninstallAsk,
+    uninstallDo: uninstallDo,
     exitApp: function () { toast('В настоящем приложении здесь закроется Бунт.'); },
     stub: function (a) { toast(a || 'Скоро'); },
     toggleTray: function () {

@@ -294,7 +294,7 @@ pub async fn zapret_start(
 }
 
 /// Запоминает, включил ли пользователь запрет: при следующем запуске Бунта он поднимется сам.
-fn set_enabled(on: bool) {
+pub(crate) fn set_enabled(on: bool) {
     let Ok(root) = crate::modules::modules_root() else { return };
     let path = root.join("zapret.json");
     let mut v: serde_json::Value = fs::read_to_string(&path)

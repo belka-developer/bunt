@@ -355,3 +355,9 @@ body.app .view { height: 100vh; overflow-y: auto; }
 .sec-ico.warn { background: rgba(242, 180, 65, 0.1); color: #f2b441; border-color: rgba(242, 180, 65, 0.35); }
 .sec-item { align-items: flex-start; }
 .sec-item > span:nth-child(2) { flex: 1; min-width: 0; }
+
+.vmore { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; padding-top: 2px; }
+.btn.danger { border-color: rgba(255, 107, 125, 0.45); color: var(--bad, #ff6b7d); }
+.btn.danger:hover { background: rgba(255, 107, 125, 0.1); }
+.sec-fix { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 12px 0; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(255, 107, 125, 0.4); background: rgba(255, 107, 125, 0.08); font-size: 13px; }
+.checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }

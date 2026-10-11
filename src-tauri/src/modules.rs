@@ -20,7 +20,7 @@ use std::{
 use tauri::{AppHandle, Emitter};
 
 /// Источники компонентов: id → (владелец, репозиторий).
-fn source(id: &str) -> Result<(&'static str, &'static str), String> {
+pub(crate) fn source(id: &str) -> Result<(&'static str, &'static str), String> {
     match id {
         "discord" => Ok(("Flowseal", "zapret-discord-youtube")),
         _ => Err(format!("Неизвестный компонент: {id}")),
@@ -50,8 +50,8 @@ fn write_state(root: &Path, state: &State) -> Result<(), String> {
 }
 
 #[derive(Deserialize)]
-struct Release {
-    tag_name: String,
+pub(crate) struct Release {
+    pub(crate) tag_name: String,
     #[serde(default)]
     body: Option<String>,
     #[serde(default)]
@@ -60,16 +60,16 @@ struct Release {
     published_at: Option<String>,
     zipball_url: Option<String>,
     #[serde(default)]
-    assets: Vec<Asset>,
+    pub(crate) assets: Vec<Asset>,
 }
 
 #[derive(Deserialize)]
-struct Asset {
-    name: String,
-    browser_download_url: String,
-    size: Option<u64>,
+pub(crate) struct Asset {
+    pub(crate) name: String,
+    pub(crate) browser_download_url: String,
+    pub(crate) size: Option<u64>,
     /// GitHub отдаёт хеш вида "sha256:..."
-    digest: Option<String>,
+    pub(crate) digest: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -85,7 +85,7 @@ struct Progress {
     total: Option<u64>,
 }
 
-fn client() -> Result<reqwest::Client, String> {
+pub(crate) fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent(concat!("Bunt/", env!("CARGO_PKG_VERSION")))
         .build()
@@ -98,7 +98,16 @@ async fn fetch_release(id: &str) -> Result<Release, String> {
 }
 
 async fn fetch_release_of(owner: &str, repo: &str) -> Result<Release, String> {
-    let url = format!("https://api.github.com/repos/{owner}/{repo}/releases/latest");
+    fetch_release_url(format!("https://api.github.com/repos/{owner}/{repo}/releases/latest")).await
+}
+
+/// Релиз с конкретным тегом (нужен, чтобы сверить установленную версию с оригиналом).
+pub(crate) async fn fetch_release_tag(id: &str, tag: &str) -> Result<Release, String> {
+    let (owner, repo) = source(id)?;
+    fetch_release_url(format!("https://api.github.com/repos/{owner}/{repo}/releases/tags/{tag}")).await
+}
+
+async fn fetch_release_url(url: String) -> Result<Release, String> {
     let resp = client()?
         .get(url)
         .header("Accept", "application/vnd.github+json")
@@ -109,6 +118,22 @@ async fn fetch_release_of(owner: &str, repo: &str) -> Result<Release, String> {
         return Err(format!("GitHub ответил: {}", resp.status()));
     }
     resp.json().await.map_err(|e| format!("Непонятный ответ GitHub: {e}"))
+}
+
+/// Архив релиза и его хеш, если GitHub его отдаёт.
+pub(crate) fn pick_archive(rel: &Release) -> Result<(String, Option<String>), String> {
+    match rel.assets.iter().find(|a| a.name.to_lowercase().ends_with(".zip")) {
+        Some(a) => Ok((a.browser_download_url.clone(), a.digest.clone())),
+        None => Ok((rel.zipball_url.clone().ok_or("В релизе нет архива")?, None)),
+    }
+}
+
+pub(crate) async fn download_bytes(url: &str) -> Result<Vec<u8>, String> {
+    let resp = client()?.get(url).send().await.map_err(|e| format!("Не удалось скачать: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("Скачивание: GitHub ответил {}", resp.status()));
+    }
+    resp.bytes().await.map(|b| b.to_vec()).map_err(|e| format!("Обрыв загрузки: {e}"))
 }
 
 fn clean_version(tag: &str) -> String {
@@ -151,46 +176,119 @@ pub async fn latest_component(id: String) -> Result<Latest, String> {
     })
 }
 
+/// Пользовательские списки (`lists/*-user.txt`) сохраняются при обновлении и переустановке.
+fn read_user_lists(dir: &Path) -> Vec<(String, Vec<u8>)> {
+    let Ok(rd) = fs::read_dir(dir.join("lists")) else { return Vec::new() };
+    rd.flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.ends_with("-user.txt") { Some((name, fs::read(e.path()).ok()?)) } else { None }
+        })
+        .collect()
+}
+
+fn restore_user_lists(dir: &Path, lists: &[(String, Vec<u8>)]) {
+    if lists.is_empty() {
+        return;
+    }
+    let d = dir.join("lists");
+    let _ = fs::create_dir_all(&d);
+    for (name, bytes) in lists {
+        let _ = fs::write(d.join(name), bytes);
+    }
+}
+
 /// Скачивает последний релиз, проверяет хеш и кладёт в `modules\<id>\<версия>`.
+/// `force`: переустановка, даже если эта версия уже стоит. Работающий winws останавливается.
 #[tauri::command]
-pub async fn install_component(app: AppHandle, id: String) -> Result<String, String> {
+pub async fn install_component(
+    app: AppHandle,
+    state: tauri::State<'_, crate::zapret::Zapret>,
+    id: String,
+    force: Option<bool>,
+) -> Result<String, String> {
+    let force = force.unwrap_or(false);
     let rel = fetch_release(&id).await?;
     let version = safe_dir_name(&clean_version(&rel.tag_name))?;
     let root = modules_root()?;
     let target = root.join(&id).join(&version);
-    if target.is_dir() {
-        let mut state = read_state(&root);
-        state.insert(id, version.clone());
-        write_state(&root, &state)?;
+    if target.is_dir() && !force {
+        let mut st = read_state(&root);
+        st.insert(id, version.clone());
+        write_state(&root, &st)?;
         return Ok(version);
     }
 
-    let (url, digest) = match rel.assets.iter().find(|a| a.name.to_lowercase().ends_with(".zip")) {
-        Some(a) => (a.browser_download_url.clone(), a.digest.clone()),
-        None => (rel.zipball_url.clone().ok_or("В релизе нет архива")?, None),
-    };
-
+    let (url, digest) = pick_archive(&rel)?;
     let staging = root.join(".staging");
     let _ = fs::remove_dir_all(&staging);
     fs::create_dir_all(&staging).map_err(|e| format!("Нет прав на запись в {}: {e}", staging.display()))?;
-    let result = download_and_place(&app, &id, &url, digest.as_deref(), &staging, &target).await;
+
+    let result: Result<(), String> = async {
+        let root_dir = download_and_extract(&app, &id, &url, digest.as_deref(), &staging).await?;
+        // Файлы заняты работающим winws: останавливаем его прямо перед заменой
+        state.stop();
+        // Свои списки берём из заменяемой папки или из предыдущей активной версии
+        let previous = read_state(&root).get(&id).map(|v| root.join(&id).join(v));
+        let saved = if target.is_dir() {
+            read_user_lists(&target)
+        } else {
+            previous.as_deref().map(read_user_lists).unwrap_or_default()
+        };
+        if target.is_dir() {
+            fs::remove_dir_all(&target).map_err(|e| format!("Не удалось удалить старые файлы: {e}"))?;
+        }
+        fs::create_dir_all(target.parent().ok_or("Неверный путь")?).map_err(|e| e.to_string())?;
+        fs::rename(&root_dir, &target).map_err(|e| format!("Не удалось переместить файлы: {e}"))?;
+        restore_user_lists(&target, &saved);
+        // Хеши файлов, по ним работает быстрая проверка целостности
+        let _ = crate::integrity::write_manifest(&target);
+        Ok(())
+    }
+    .await;
     let _ = fs::remove_dir_all(&staging);
     result?;
 
-    let mut state = read_state(&root);
-    state.insert(id, version.clone());
-    write_state(&root, &state)?;
+    let mut st = read_state(&root);
+    st.insert(id.clone(), version.clone());
+    write_state(&root, &st)?;
+    // Старые версии больше не нужны
+    if let Ok(rd) = fs::read_dir(root.join(&id)) {
+        for e in rd.flatten() {
+            if e.file_name().to_string_lossy() != version.as_str() {
+                let _ = fs::remove_dir_all(e.path());
+            }
+        }
+    }
     Ok(version)
 }
 
-async fn download_and_place(
+/// Удаляет компонент целиком: останавливает запрет и стирает папку с файлами и своими списками.
+#[tauri::command]
+pub async fn uninstall_component(state: tauri::State<'_, crate::zapret::Zapret>, id: String) -> Result<(), String> {
+    source(&id)?;
+    state.stop();
+    if id == "discord" {
+        crate::zapret::set_enabled(false);
+    }
+    let root = modules_root()?;
+    let dir = root.join(&id);
+    if dir.exists() {
+        fs::remove_dir_all(&dir).map_err(|e| format!("Не удалось удалить файлы (их держит другая программа?): {e}"))?;
+    }
+    let mut st = read_state(&root);
+    st.remove(&id);
+    write_state(&root, &st)
+}
+
+/// Скачивает архив, проверяет хеш и распаковывает во временную папку. Возвращает папку с файлами.
+async fn download_and_extract(
     app: &AppHandle,
     id: &str,
     url: &str,
     digest: Option<&str>,
     staging: &Path,
-    target: &Path,
-) -> Result<(), String> {
+) -> Result<PathBuf, String> {
     let resp = client()?.get(url).send().await.map_err(|e| format!("Не удалось скачать: {e}"))?;
     if !resp.status().is_success() {
         return Err(format!("Скачивание: GitHub ответил {}", resp.status()));
@@ -221,17 +319,8 @@ async fn download_and_place(
     extract_zip(&zip_path, &unpacked)?;
 
     // Если всё лежит в одной вложенной папке (так делает zipball), поднимаем её содержимое.
-    let mut root_dir = unpacked.clone();
     let entries: Vec<_> = fs::read_dir(&unpacked).map_err(|e| e.to_string())?.flatten().collect();
-    if entries.len() == 1 && entries[0].path().is_dir() {
-        root_dir = entries[0].path();
-    }
-
-    fs::create_dir_all(target.parent().ok_or("Неверный путь")?).map_err(|e| e.to_string())?;
-    fs::rename(&root_dir, target).map_err(|e| format!("Не удалось переместить файлы: {e}"))?;
-    // Запоминаем хеши файлов, по ним потом работает проверка целостности
-    let _ = crate::integrity::write_manifest(target);
-    Ok(())
+    Ok(if entries.len() == 1 && entries[0].path().is_dir() { entries[0].path() } else { unpacked })
 }
 
 fn extract_zip(zip_path: &Path, out: &Path) -> Result<(), String> {
