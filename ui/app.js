@@ -39,7 +39,7 @@
     on: { discord: false, telegram: false, vless: false, wg: false },
     discord: { mode: 'auto', strategy: 'general (ALT2)', game: false, ipset: 'none', lastTest: 'сегодня, 14:32', autoupd: true, ipsetUpdated: 'сегодня, 09:12' },
     telegram: { port: '1443', link: '' },
-    tgc: { host: '127.0.0.1', port: '1443', secret: '', dc_ip: '2:149.154.167.220\n4:149.154.167.220', verbose: false, buf_kb: '256', pool_size: '4', log_max_mb: '5', cfproxy: true, h2: true, cf_domain_on: false, cf_domain: '', cf_worker_on: false, cf_worker: '', force_test_dc: false, no_secure: false, fake_tls_domain: '' },
+    tgc: { autostart: false, host: '127.0.0.1', port: '1443', secret: '', dc_ip: '2:149.154.167.220\n4:149.154.167.220', verbose: false, buf_kb: '256', pool_size: '4', log_max_mb: '5', cfproxy: true, h2: true, cf_domain_on: false, cf_domain: '', cf_worker_on: false, cf_worker: '', force_test_dc: false, no_secure: false, fake_tls_domain: '' },
     lists: {
       general: { file: 'list-general-user.txt', title: 'Свои домены', hint: 'Домены для обхода, по одному на строку. Поддомены учитываются автоматически.', text: '# по одному домену на строку\nexample.org\ncdn.example.org\n' },
       exclude: { file: 'list-exclude-user.txt', title: 'Исключения доменов', hint: 'Домены, которые не нужно обрабатывать, даже если их IP есть в ipset-all.txt.', text: '' },
@@ -341,7 +341,7 @@
     $('#verList').innerHTML = live().map(function (c) {
       var unchecked = !c.checked && (c.id === 'app' || REAL[c.id]);
       var latest = c.next || (unchecked ? '…' : (c.cur || c.latest || '…')), stat;
-      if (c.busy != null) stat = '<span class="bar-track" style="width:110px"><span class="bar-fill" style="width:' + Math.max(c.busy, 4) + '%"></span></span>' + (c.stage ? '<small class="stage">' + esc(c.stage) + '… ' + c.busy + '%</small>' : '');
+      if (c.busy != null) stat = '<span class="tag"><span class="spin"></span>' + c.busy + '%</span>';
       else if (!c.cur) stat = '<button class="btn sm primary" data-act="installComp" data-arg="' + c.id + '">Установить</button>';
       else if (c.next) stat = '<button class="btn sm primary" data-act="updateOne" data-arg="' + c.id + '">Обновить</button>';
       else if (unchecked) stat = isChecking() ? '<span class="tag"><span class="spin"></span>Проверяем…</span>' : '<span class="tag">Не проверено</span>';
@@ -351,6 +351,7 @@
         '<div class="vcell"><small>Установлено</small><span class="v">' + (c.cur || 'Не установлено') + '</span></div>' +
         '<div class="vcell"><small>На GitHub</small><span class="v ' + (c.next ? 'new' : '') + '">' + latest + '</span></div>' +
         '<div class="vstat">' + stat + '</div>' +
+        (c.busy != null ? '<div class="vbar"><span class="bar-track"><span class="bar-fill" style="width:' + Math.max(c.busy, 3) + '%"></span></span><small>' + esc(c.stage ? c.stage + '…' : 'Загрузка…') + '</small></div>' : '') +
         (inTauri && REAL[c.id] && c.cur && c.busy == null ? '<div class="vmore"><button class="btn sm" data-act="reinstallAsk" data-arg="' + c.id + '">Переустановить</button><button class="btn sm danger" data-act="uninstallAsk" data-arg="' + c.id + '">Удалить</button></div>' : '') +
         '</div>';
     }).join('');
@@ -516,6 +517,46 @@
       toast('Настройки применены');
     }).catch(function (err) { toast(String(err).slice(0, 220), 'warn'); S.on.telegram = false; }).then(renderAll);
   }
+  function tgAutostart(on) {
+    if (!inTauri || !installed('telegram')) { S.tgc.autostart = false; toast('Сначала установите компонент.', 'warn'); renderAll(); return; }
+    T.core.invoke('telegram_set_autostart', { on: on }).then(function () {
+      if (on && S.settings && !S.settings.autostart) {
+        S.settings.autostart = true;
+        saveSettings();
+        toast('Автозапуск прокси включён. Бунт тоже будет запускаться вместе с Windows.');
+      } else toast(on ? 'Прокси будет запускаться вместе с Бунтом' : 'Автозапуск прокси выключен');
+    }).catch(function (err) { S.tgc.autostart = !on; toast(String(err).slice(0, 200), 'warn'); }).then(renderAll);
+  }
+  function askTgTakeOver(f) {
+    var what = [];
+    if (f.procs.length) what.push('процесс: <span class="mono">' + esc(f.procs[0]) + '</span>' + (f.procs.length > 1 ? ' и ещё ' + (f.procs.length - 1) : ''));
+    if (f.autostart) what.push('запись <b class="mono">TgWsProxy</b> в автозагрузке Windows');
+    openModal('Прокси Telegram работает не из Бунта',
+      '<p>Найдено: ' + what.join('; ') + '.</p>' +
+      '<p class="note">Две копии прокси мешают друг другу: занимают один порт и не дают запуститься второй. Бунт остановит чужую и запустит свою. Файлы на диске останутся.</p>',
+      '<button class="btn" data-act="closeModal">Отмена</button>' +
+      '<button class="btn' + (f.autostart ? '' : ' primary') + '" data-act="tgTakeOver" data-arg="0">Отключить и запустить из Бунта</button>' +
+      (f.autostart ? '<button class="btn primary" data-act="tgTakeOver" data-arg="1">Отключить и убрать из автозагрузки</button>' : ''));
+  }
+  function tgTakeOver(arg) {
+    closeModal();
+    if (tBusy) return;
+    tBusy = true;
+    addLog({ svc: SVC.telegram.name, m: 'Останавливаем прокси, запущенный не из Бунта…' });
+    T.core.invoke('telegram_take_over', { removeAutostart: arg === '1' }).then(function () {
+      tBusy = false;
+      if (arg === '1') addLog({ svc: SVC.telegram.name, m: 'Чужой прокси убран из автозагрузки.' });
+      realTelegram(true, false, true);
+    }).catch(function (err) {
+      tBusy = false;
+      addLog({ svc: SVC.telegram.name, m: 'Ошибка: ' + err });
+      toast(String(err).slice(0, 200), 'warn');
+      renderAll();
+    });
+  }
+  function checkTgForeign() {
+    return T.core.invoke('telegram_foreign').then(function (f) { if (f.procs.length) askTgTakeOver(f); }).catch(function () {});
+  }
   function tgReset() {
     if (!inTauri || !installed('telegram')) return;
     T.core.invoke('telegram_config_reset').then(function (st) {
@@ -532,8 +573,17 @@
       toast('Новый секрет создан. Добавьте новую ссылку в Telegram.');
     }).catch(function (err) { toast(String(err).slice(0, 220), 'warn'); }).then(renderAll);
   }
-  function realTelegram(on, quiet) {
+  function realTelegram(on, quiet, skipCheck) {
     if (tBusy) return;
+    if (on && !skipCheck) {
+      tBusy = true;
+      T.core.invoke('telegram_foreign').then(function (f) {
+        tBusy = false;
+        if (f.procs.length || (f.autostart && !quiet)) askTgTakeOver(f);
+        else realTelegram(true, quiet, true);
+      }).catch(function () { tBusy = false; realTelegram(true, quiet, true); });
+      return;
+    }
     tBusy = true;
     var n = SVC.telegram.name;
     if (on) addLog({ svc: n, m: 'Запуск прокси…' });
@@ -934,6 +984,7 @@
     installComp: installComp,
     elevate: elevate,
     takeOver: takeOver,
+    tgTakeOver: function (a) { tgTakeOver(a); },
     runSec: runSec,
     runSecOnline: runSecOnline,
     reinstallAsk: reinstallAsk,
@@ -962,6 +1013,7 @@
     if (d.sw) {
       set(d.sw, !get(d.sw));
       if (d.sw === 'discord.game') addLog({ svc: 'Zapret (Discord)', m: 'Game Filter: ' + (S.discord.game ? 'включён' : 'выключен') + '. Нужен перезапуск стратегии.' });
+      if (d.sw === 'tgc.autostart') { tgAutostart(S.tgc.autostart); renderAll(); return; }
       if (d.sw === 'discord.autoupd') toast(S.discord.autoupd ? 'Автопроверка включена' : 'Автопроверка выключена');
       renderDiscord();
       sync();
@@ -1045,8 +1097,8 @@
         T.core.invoke('telegram_status').then(function (st) {
           applyTg(st);
           if (st.running) { S.on.telegram = true; renderAll(); }
-          else if (st.enabled) realTelegram(true, true);
-          else renderAll();
+          else if (st.enabled || (st.config && st.config.autostart)) realTelegram(true, true);
+          else { renderAll(); checkTgForeign(); }
         }).catch(function () {});
       }
       if (!comp('discord').cur) return;

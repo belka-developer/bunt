@@ -53,7 +53,7 @@ fn save(app: &AppHandle, s: &Settings) -> Result<(), String> {
 
 #[cfg_attr(not(windows), allow(dead_code))]
 #[cfg(windows)]
-fn run_hidden(program: &str, args: &[&str]) -> Option<String> {
+pub(crate) fn run_hidden(program: &str, args: &[&str]) -> Option<String> {
     Command::new(program)
         .args(args)
         .creation_flags(CREATE_NO_WINDOW)

@@ -231,7 +231,10 @@ pub fn run() {
             telegram::telegram_stop,
             telegram::telegram_config_set,
             telegram::telegram_new_secret,
-            telegram::telegram_config_reset
+            telegram::telegram_config_reset,
+            telegram::telegram_set_autostart,
+            telegram::telegram_foreign,
+            telegram::telegram_take_over
         ])
         .on_window_event(|window, event| {
             if window.label() != "main" {

@@ -80,6 +80,8 @@ pub struct Config {
     pub force_test_dc: bool,
     pub no_secure: bool,
     pub fake_tls_domain: String,
+    /// Запускать прокси при старте Бунта (и Бунт при старте Windows, это включает интерфейс)
+    pub autostart: bool,
 }
 
 impl Default for Config {
@@ -102,6 +104,7 @@ impl Default for Config {
             force_test_dc: false,
             no_secure: false,
             fake_tls_domain: String::new(),
+            autostart: false,
         }
     }
 }
@@ -514,6 +517,95 @@ pub async fn telegram_new_secret() -> Result<Info, String> {
         save_config(&c)?;
         restart_if_running()?;
         Ok(info())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Включает или выключает запуск прокси вместе с Бунтом. Остальные настройки и работающий прокси не трогает.
+#[tauri::command]
+pub async fn telegram_set_autostart(on: bool) -> Result<Info, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut c = load_config();
+        c.autostart = on;
+        save_config(&c)?;
+        Ok(info())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// ───────── прокси, запущенный не из Бунта ─────────
+
+#[derive(Serialize)]
+pub struct Foreign {
+    /// Описание чужих процессов (путь к exe или командная строка)
+    procs: Vec<String>,
+    /// Есть запись автозапуска оригинального приложения (Run, TgWsProxy)
+    autostart: bool,
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+const FOREIGN_AUTOSTART_VALUE: &str = "TgWsProxy";
+
+/// Чужие копии прокси: трей-приложение TgWsProxy*.exe и консольный python с модулем tg_ws_proxy вне папки Бунта.
+fn foreign_list() -> Vec<(u32, String)> {
+    #[cfg_attr(not(windows), allow(unused_mut))]
+    let mut out: Vec<(u32, String)> = crate::zapret::list_procs("TgWsProxy*").into_iter().filter(|(_, p)| !crate::zapret::is_ours(p)).collect();
+    #[cfg(windows)]
+    {
+        let script = "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-CimInstance Win32_Process -Filter \"Name like 'python%'\" | Where-Object { $_.CommandLine -match 'tg_ws_proxy' } | ForEach-Object { \"$($_.ProcessId)|$($_.ExecutablePath)\" }";
+        if let Ok(o) = Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", script]).creation_flags(CREATE_NO_WINDOW).output() {
+            for l in String::from_utf8_lossy(&o.stdout).lines() {
+                if let Some((id, path)) = l.trim().split_once('|') {
+                    if let Ok(id) = id.parse::<u32>() {
+                        if !crate::zapret::is_ours(path) {
+                            out.push((id, format!("python: {path}")));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+fn foreign_autostart() -> bool {
+    #[cfg(windows)]
+    {
+        return crate::settings::run_hidden("reg", &["query", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run", "/v", FOREIGN_AUTOSTART_VALUE]).is_some();
+    }
+    #[cfg(not(windows))]
+    false
+}
+
+/// Запущен ли Telegram-прокси не из Бунта (и прописан ли он в автозагрузке).
+#[tauri::command]
+pub async fn telegram_foreign() -> Result<Foreign, String> {
+    tauri::async_runtime::spawn_blocking(|| Foreign { procs: foreign_list().into_iter().map(|(_, p)| p).collect(), autostart: foreign_autostart() })
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Останавливает чужой прокси. `remove_autostart`: заодно убрать его из автозагрузки Windows (файлы на диске не трогаем).
+#[tauri::command]
+pub async fn telegram_take_over(remove_autostart: bool) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        for (pid, _) in foreign_list() {
+            crate::zapret::kill_pid(pid);
+        }
+        if remove_autostart && foreign_autostart() {
+            #[cfg(windows)]
+            {
+                crate::settings::run_hidden("reg", &["delete", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run", "/v", FOREIGN_AUTOSTART_VALUE, "/f"])
+                    .ok_or("Не удалось убрать прокси из автозагрузки")?;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(600));
+        if !foreign_list().is_empty() {
+            return Err("Не удалось остановить чужой прокси. Закройте его в трее вручную.".into());
+        }
+        Ok(())
     })
     .await
     .map_err(|e| e.to_string())?
