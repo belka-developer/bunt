@@ -228,7 +228,10 @@ async fn download_and_place(
     }
 
     fs::create_dir_all(target.parent().ok_or("Неверный путь")?).map_err(|e| e.to_string())?;
-    fs::rename(&root_dir, target).map_err(|e| format!("Не удалось переместить файлы: {e}"))
+    fs::rename(&root_dir, target).map_err(|e| format!("Не удалось переместить файлы: {e}"))?;
+    // Запоминаем хеши файлов, по ним потом работает проверка целостности
+    let _ = crate::integrity::write_manifest(target);
+    Ok(())
 }
 
 fn extract_zip(zip_path: &Path, out: &Path) -> Result<(), String> {

@@ -107,6 +107,8 @@ h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.01em; text-wrap: bala
 .b-telegram { background: linear-gradient(145deg, #38b6f5, #1a8ed0); }
 .b-vless { background: linear-gradient(145deg, #4aa3ff, #2a62d9); }
 .b-wg { background: linear-gradient(145deg, #d8394d, #8f1f33); }
+.b-dns { background: linear-gradient(145deg, #2fc8a5, #1b8a74); }
+.b-fptn { background: linear-gradient(145deg, #9a6bff, #5b3ccf); }
 .who { display: grid; gap: 2px; min-width: 0; }
 .card-name { font-weight: 600; font-size: 13.5px; overflow-wrap: anywhere; }
 .state { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
@@ -346,3 +348,10 @@ body.app .view { height: 100vh; overflow-y: auto; }
 .admin-banner .ic { color: #f2b441; }
 .admin-banner.flash { animation: flash 0.6s ease 2; }
 @keyframes flash { 50% { background: rgba(242, 180, 65, 0.3); } }
+
+.sec-item.bad .ic, .sec-item.bad .res { color: var(--bad, #ff6b7d); }
+.sec-item.info .ic, .sec-item.info .res { color: var(--info); }
+.sec-ico.bad { background: rgba(255, 107, 125, 0.1); color: var(--bad, #ff6b7d); border-color: rgba(255, 107, 125, 0.35); }
+.sec-ico.warn { background: rgba(242, 180, 65, 0.1); color: #f2b441; border-color: rgba(242, 180, 65, 0.35); }
+.sec-item { align-items: flex-start; }
+.sec-item > span:nth-child(2) { flex: 1; min-width: 0; }

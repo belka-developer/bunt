@@ -22,7 +22,7 @@
   if (appMode) document.body.classList.add('app');
   var installed = function (id) { var c = S.comps.filter(function (x) { return x.id === id; })[0]; return !!(c && c.cur); };
   var live = function () { return S.comps.filter(function (c) { return !SOON[c.id]; }); };
-  var PAGES = ['home', 'discord', 'telegram', 'vless', 'wg', 'security', 'updates', 'settings'];
+  var PAGES = ['home', 'discord', 'telegram', 'vless', 'wg', 'dns', 'fptn', 'security', 'updates', 'settings'];
   var SUFFIX = ['', 'ALT'];
   for (var q = 2; q <= 13; q++) SUFFIX.push('ALT' + q);
   SUFFIX = SUFFIX.concat(['EXP', 'FAKE TLS AUTO', 'FAKE TLS AUTO ALT', 'FAKE TLS AUTO ALT2', 'FAKE TLS AUTO ALT3', 'SIMPLE FAKE', 'SIMPLE FAKE ALT', 'SIMPLE FAKE ALT2']);
@@ -166,6 +166,8 @@
       ['plane', 'Запрет Telegram · скоро', null],
       ['net', 'VLESS · скоро', null],
       ['vpn', 'WireGuard · скоро', null],
+      ['globe', 'DNS · скоро', null],
+      ['tunnel', 'FPTN · скоро', null],
       null,
       ['download', 'Обновления', 'updates'],
       ['sliders', 'Настройки', 'settings']
@@ -351,18 +353,23 @@
   }
 
   function renderSecurity() {
-    var run = S.sec.running;
-    var allOk = S.sec.items.every(function (i) { return i.st === 'ok'; });
-    $('#secIco').className = 'sec-ico' + (run ? ' run' : '');
-    $('#secTitle').textContent = run ? 'Идёт проверка…' : (allOk ? 'Все файлы в порядке' : 'Проверка не завершена');
-    $('#secText').textContent = run ? 'Сверяем хеши и подписи компонентов.' : (allOk ? 'Проверка завершена. Подозрительных изменений не найдено.' : 'Запустите проверку ещё раз.');
+    var run = S.sec.running, items = S.sec.items;
+    var bad = items.some(function (i) { return i.st === 'bad'; });
+    var warn = items.some(function (i) { return i.st === 'warn'; });
+    var done = items.length && items.every(function (i) { return i.st !== 'idle' && i.st !== 'run'; });
+    $('#secIco').className = 'sec-ico' + (run ? ' run' : bad ? ' bad' : warn ? ' warn' : '');
+    $('#secTitle').textContent = run ? 'Идёт проверка…' : !done ? 'Проверка ещё не запускалась' : bad ? 'Найдены изменения в файлах' : warn ? 'Есть замечания' : 'Всё в порядке';
+    $('#secText').textContent = run ? 'Сверяем хеши и подписи компонентов.' : !done ? 'Нажмите «Запустить проверку».' : bad ? 'Файлы отличаются от тех, что были при установке. Переустановите компонент.' : warn ? 'Подробности в списке ниже.' : 'Файлы совпадают с записанными при установке.';
     $('#secLast').textContent = S.sec.last;
     $('#btnSec').disabled = run;
-    $('#secList').innerHTML = S.sec.items.map(function (i) {
-      var lead = i.st === 'run' ? '<span class="spin"></span>' : ico(i.st === 'ok' ? 'check' : 'clock');
-      return '<div class="sec-item ' + (i.st === 'idle' ? 'idle' : '') + '">' + lead + '<span>' + i.t + '</span><span class="res">' + (i.st === 'ok' ? 'OK' : i.st === 'run' ? 'Проверяю…' : 'Ожидает') + '</span></div>';
+    var RES = { ok: 'OK', warn: 'Внимание', bad: 'Нарушено', info: 'Заметка', run: 'Проверяю…', idle: 'Ожидает' };
+    var ICO = { ok: 'check', warn: 'alert', bad: 'alert', info: 'shield', idle: 'clock' };
+    $('#secList').innerHTML = items.map(function (i) {
+      var lead = i.st === 'run' ? '<span class="spin"></span>' : ico(ICO[i.st] || 'check');
+      return '<div class="sec-item ' + i.st + '">' + lead + '<span>' + esc(i.t) + (i.note ? '<small>' + esc(i.note) + '</small>' : '') + '</span><span class="res">' + (RES[i.st] || '') + '</span></div>';
     }).join('');
   }
+
 
   function sync() {
     $$('.sw[data-svc]').forEach(function (b) { b.setAttribute('aria-checked', String(!!S.on[b.dataset.svc])); });
@@ -702,6 +709,23 @@
   /* проверка целостности */
   function runSec() {
     if (S.sec.running) return;
+    if (inTauri) {
+      S.sec.running = true;
+      S.sec.items = [{ t: 'Проверка файлов и подписей', st: 'run' }];
+      renderSecurity();
+      T.core.invoke('integrity_check').then(function (list) {
+        S.sec.items = list.map(function (r) { return { t: r.title, st: r.state, note: r.note }; });
+        var bad = list.filter(function (r) { return r.state === 'bad'; }).length;
+        addLog(bad ? { m: 'Проверка целостности: найдены нарушения (' + bad + ').' } : { m: 'Проверка целостности завершена. Нарушений нет.', ok: true });
+      }).catch(function (err) {
+        S.sec.items = [{ t: 'Проверка не выполнена', st: 'bad', note: String(err) }];
+      }).then(function () {
+        S.sec.running = false;
+        S.sec.last = nowShort();
+        renderSecurity();
+      });
+      return;
+    }
     S.sec.running = true;
     S.sec.items.forEach(function (i) { i.st = 'idle'; });
     renderSecurity();
@@ -857,7 +881,7 @@
   /* старт */
   S.comps.forEach(function (c) { if (c.id !== 'app') c.demo = true; });
   /* в настоящем приложении до первой проверки не пишем «Актуально» */
-  if (inTauri) { startPending = true; S.comps.forEach(function (c) { c.checked = false; }); }
+  if (inTauri) { S.sec.items = []; S.sec.last = 'ещё не запускалась'; startPending = true; S.comps.forEach(function (c) { c.checked = false; }); }
   if (appMode) { S.uptime = 0; S.lastCheck = 'ещё не проверяли'; }
   S.discord.scores = {};
   STRATS.forEach(function (n, i) { S.discord.scores[n] = INIT_SCORES[i]; });

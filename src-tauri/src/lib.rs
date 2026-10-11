@@ -4,6 +4,7 @@
 //! обновлений из GitHub Releases, значок в трее, запуск одного экземпляра.
 //! Запуск запретов (winws), служба и компоненты появятся позже.
 
+mod integrity;
 mod modules;
 mod settings;
 mod zapret;
@@ -124,6 +125,8 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let discord = MenuItem::with_id(app, "go:discord", "Запрет Discord и YouTube", true, None::<&str>)?;
     let telegram = MenuItem::with_id(app, "go:telegram", "Запрет Telegram · скоро", false, None::<&str>)?;
     let vless = MenuItem::with_id(app, "go:vless", "VLESS · скоро", false, None::<&str>)?;
+    let dns = MenuItem::with_id(app, "go:dns", "DNS · скоро", false, None::<&str>)?;
+    let fptn = MenuItem::with_id(app, "go:fptn", "FPTN · скоро", false, None::<&str>)?;
     let wg = MenuItem::with_id(app, "go:wg", "WireGuard · скоро", false, None::<&str>)?;
     let updates = MenuItem::with_id(app, "go:updates", "Обновления", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "go:settings", "Настройки", true, None::<&str>)?;
@@ -133,7 +136,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let sep2 = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,
-        &[&open, &sep1, &discord, &telegram, &vless, &wg, &sep2, &updates, &settings, &quit],
+        &[&open, &sep1, &discord, &telegram, &vless, &wg, &dns, &fptn, &sep2, &updates, &settings, &quit],
     )?;
     // Без прав администратора запрет работать не будет: в меню трея появляется пункт, который это исправляет
     if !settings::is_admin_sync() {
@@ -208,6 +211,7 @@ pub fn run() {
             modules::release_notes,
             settings::settings_get,
             settings::settings_set,
+            integrity::integrity_check,
             settings::open_url,
             settings::autostart_exists,
             settings::is_admin,

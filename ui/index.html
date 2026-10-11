@@ -30,6 +30,8 @@
     <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
     <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M3 9.5a14 14 0 0 1 18 0M6.5 13a9 9 0 0 1 11 0M10 16.5a4 4 0 0 1 4 0"/><circle cx="12" cy="19.5" r=".8"/></symbol>
     <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 3 20h18z"/><path d="M12 10v4M12 17h.01"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.4 3.8 5.2 3.8 8.5s-1.3 6.1-3.8 8.5c-2.5-2.4-3.8-5.2-3.8-8.5S9.5 5.9 12 3.5z"/></symbol>
+    <symbol id="i-tunnel" viewBox="0 0 24 24"><path d="M4 19v-6a8 8 0 0 1 16 0v6M9 19v-6a3 3 0 0 1 6 0v6"/></symbol>
     <symbol id="i-min" viewBox="0 0 24 24"><path d="M6 12h12"/></symbol>
     <symbol id="i-max" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
   </defs>
@@ -61,6 +63,8 @@
             <button class="nav" data-go="telegram"><svg class="ic"><use href="#i-plane"/></svg>Zapret (Telegram)<span class="soon-tag">скоро</span></button>
             <button class="nav" data-go="vless"><svg class="ic"><use href="#i-net"/></svg>VLESS<span class="soon-tag">скоро</span></button>
             <button class="nav" data-go="wg"><svg class="ic"><use href="#i-vpn"/></svg>WireGuard<span class="soon-tag">скоро</span></button>
+            <button class="nav" data-go="dns"><svg class="ic"><use href="#i-globe"/></svg>DNS<span class="soon-tag">скоро</span></button>
+            <button class="nav" data-go="fptn"><svg class="ic"><use href="#i-tunnel"/></svg>FPTN<span class="soon-tag">скоро</span></button>
             <button class="nav" data-go="security"><svg class="ic"><use href="#i-shield"/></svg>Безопасность</button>
             <button class="nav" data-go="updates"><svg class="ic"><use href="#i-download"/></svg>Обновления<span class="nav-dot" id="navDot" hidden></span></button>
             <button class="nav" data-go="settings"><svg class="ic"><use href="#i-sliders"/></svg>Настройки</button>
@@ -269,11 +273,29 @@
           </section>
 
           <!-- Безопасность -->
+          <section data-page="dns" data-soon hidden>
+            <div class="soon">
+              <span class="badge b-dns"><svg class="ic"><use href="#i-globe"/></svg></span>
+              <span class="tag warn">Скоро</span>
+              <h1>DNS</h1>
+              <p class="sub">Здесь появится быстрая смена DNS и безопасный DNS для всех подключений. Раздел в разработке.</p>
+            </div>
+          </section>
+
+          <section data-page="fptn" data-soon hidden>
+            <div class="soon">
+              <span class="badge b-fptn"><svg class="ic"><use href="#i-tunnel"/></svg></span>
+              <span class="tag warn">Скоро</span>
+              <h1>FPTN</h1>
+              <p class="sub">Здесь появится управление VPN-клиентом FPTN: токен, сервер и метод обхода блокировок. Раздел в разработке.</p>
+            </div>
+          </section>
+
           <section data-page="security" hidden>
             <div class="page-head">
               <div>
                 <h1>Проверка целостности и защита</h1>
-                <p class="sub">Хеши, цифровые подписи и сверка с эталоном. Вирусы не смогут незаметно подменить утилиты.</p>
+                <p class="sub">Файлы установленных компонентов сверяются с хешами, записанными при установке, и проверяются цифровые подписи. Так видно подмену и порчу файлов.</p>
               </div>
             </div>
             <div class="panel">
