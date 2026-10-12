@@ -459,6 +459,10 @@ fn our_pids() -> Vec<u32> {
     crate::zapret::list_procs(CLI_PROC).into_iter().filter(|(_, p)| crate::zapret::is_ours(p)).map(|(id, _)| id).collect()
 }
 
+pub(crate) fn is_running() -> bool {
+    running()
+}
+
 fn running() -> bool {
     let own = {
         let mut g = CHILD.lock().unwrap();
@@ -554,6 +558,10 @@ pub(crate) fn require_admin() -> Result<(), String> {
 
 fn connect_blocking() -> Result<(), String> {
     require_admin()?;
+    // Два VPN сразу делят маршруты и ломают сеть: второй не включаем
+    if crate::wg::is_running() {
+        return Err("WireGuard / AmneziaWG сейчас включён. Отключите его, прежде чем включать FPTN: два VPN сразу ломают маршруты.".into());
+    }
     let dir = crate::modules::active_dir("fptn")?;
     let exe = dir.join(CLI);
     if !exe.is_file() {

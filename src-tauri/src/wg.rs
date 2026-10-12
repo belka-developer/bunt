@@ -579,6 +579,10 @@ fn stop_tunnels_inner(exe: &std::path::Path) {
 
 fn connect_blocking(name: &str) -> Result<(), String> {
     crate::fptn::require_admin()?;
+    // Два VPN сразу делят маршруты и ломают сеть: второй не включаем
+    if crate::fptn::is_running() {
+        return Err("FPTN сейчас включён. Отключите его, прежде чем включать WireGuard или AmneziaWG: два VPN сразу ломают маршруты.".into());
+    }
     if !valid_name(name) {
         return Err("Неверное имя профиля.".into());
     }
@@ -749,6 +753,10 @@ pub struct Info {
     config: Config,
     adapter: Adapter,
     stats: Stats,
+}
+
+pub(crate) fn is_running() -> bool {
+    exe_path().ok().map(|e| ours_tunnels(&e).iter().any(|(_, _, s)| is_running_state(s))).unwrap_or(false)
 }
 
 fn info(with_adapter: bool) -> Info {

@@ -423,6 +423,7 @@
       if (!quiet) { toast('Сначала выберите сервер VLESS.', 'warn'); go(id); }
       return false;
     }
+    if (on && VPNS.indexOf(id) >= 0 && vpnConflict(id, quiet)) return false;
     if (inTauri && id === 'discord') { realDiscord(on, quiet); return true; }
     if (inTauri && id === 'telegram') { realTelegram(on, quiet); return true; }
     if (inTauri && id === 'fptn') { realFptn(on, quiet); return true; }
@@ -605,6 +606,17 @@
       if (!quiet) toast(String(err).slice(0, 200), 'warn');
     }).then(function () { tBusy = false; renderAll(); });
   }
+  /* VPN-подобные службы делят маршруты: одновременно может работать только одна */
+  var VPNS = ['fptn', 'wg', 'vless'];
+  function vpnBusy(id) { return id === 'fptn' ? S.fptn.busy : id === 'wg' ? S.w.busy : false; }
+  function vpnConflict(id, quiet) {
+    var other = VPNS.filter(function (x) { return x !== id && (S.on[x] || vpnBusy(x)); })[0];
+    if (!other) return false;
+    var msg = SVC[other].name + ' ' + (S.on[other] ? 'включён' : 'ещё подключается') + '. Отключите его, прежде чем включать ' + SVC[id].name + ': два VPN сразу ломают маршруты и интернет.';
+    if (quiet) addLog({ svc: SVC[id].name, m: 'Не включён: ' + msg });
+    else toast(msg, 'warn');
+    return true;
+  }
   /* FPTN: консольный клиент с защитой сети, нужны права администратора */
   var FNUM = ['mtu'];
   var FST = { Up: 'Включён', Disabled: 'Отключён', Disconnected: 'Не подключён', NotPresent: 'Отсутствует' };
@@ -707,6 +719,7 @@
   function realFptn(on, quiet, skipCheck) {
     var f = S.fptn;
     if (f.busy) return;
+    if (on && vpnConflict('fptn', quiet)) return;
     if (on && !f.tokenSet) { if (!quiet) { toast('Сначала добавьте токен доступа.', 'warn'); go('fptn'); } return; }
     if (on && adminNeeded(quiet)) return;
     if (on && !skipCheck) {
@@ -905,6 +918,7 @@
   function realWg(on, quiet) {
     var w = S.w;
     if (w.busy) return;
+    if (on && vpnConflict('wg', quiet)) return;
     if (on && adminNeeded(quiet)) return;
     if (on && !w.config.active) { if (!quiet) { toast('Сначала импортируйте профиль и выберите его.', 'warn'); go('wg'); } return; }
     w.busy = true;
