@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/bunt-banner.svg" alt="Бунт" width="720"></p>
+
 # Бунт
 
 Единый центр сетевых инструментов для Windows. Первым внутри будет запрет для Discord и YouTube на основе [zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube), Telegram на основе [tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy), VPN-клиент FPTN с защитой сети, позже VLESS и WireGuard.
