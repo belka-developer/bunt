@@ -189,6 +189,59 @@ fn save_config(c: &Config) -> Result<(), String> {
     fs::write(config_file()?, serde_json::to_string_pretty(c).map_err(|e| e.to_string())?).map_err(|e| format!("Не удалось записать настройки: {e}"))
 }
 
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub(crate) struct ServerEntry {
+    name: String,
+    host: String,
+    port: u16,
+}
+
+/// Разбор токена так же, как клиент FPTN: `fptnb:` + base64(brotli(JSON)) или `fptn:` + base64(JSON).
+/// Наружу отдаются только имена и адреса серверов, логин и пароль остаются внутри.
+pub(crate) fn parse_token(token: &str) -> Result<Vec<ServerEntry>, String> {
+    use base64::Engine;
+    let t = token.trim();
+    if t.is_empty() {
+        return Ok(Vec::new());
+    }
+    let brotli = t.starts_with("fptnb:") || t.starts_with("fptnb//");
+    let mut body = t.to_string();
+    for p in ["fptnb:", "fptnb//", "fptn://", "fptn:"] {
+        body = body.replace(p, "");
+    }
+    body.retain(|c| !c.is_whitespace() && c != '=');
+    let body = body.replace('-', "+").replace('_', "/");
+    let raw = base64::engine::general_purpose::STANDARD_NO_PAD
+        .decode(body.as_bytes())
+        .map_err(|e| format!("токен повреждён (base64): {e}"))?;
+    let json_bytes = if brotli {
+        use std::io::Read;
+        let mut out = Vec::new();
+        brotli_decompressor::Decompressor::new(&raw[..], 4096)
+            .take(8 * 1024 * 1024)
+            .read_to_end(&mut out)
+            .map_err(|e| format!("токен повреждён (brotli): {e}"))?;
+        out
+    } else {
+        raw
+    };
+    let v: serde_json::Value = serde_json::from_slice(&json_bytes).map_err(|e| format!("в токене не JSON: {e}"))?;
+    let list = v.get("servers").and_then(|x| x.as_array()).ok_or("в токене нет списка серверов")?;
+    let mut out = Vec::new();
+    for sv in list {
+        let name = sv.get("name").and_then(|x| x.as_str()).unwrap_or("").to_string();
+        let host = sv.get("host").and_then(|x| x.as_str()).unwrap_or("").to_string();
+        let port = sv.get("port").and_then(|x| x.as_u64()).unwrap_or(0) as u16;
+        if !name.is_empty() {
+            out.push(ServerEntry { name, host, port });
+        }
+    }
+    if out.is_empty() {
+        return Err("список серверов в токене пуст".into());
+    }
+    Ok(out)
+}
+
 fn token_hint(t: &str) -> String {
     let chars: Vec<char> = t.chars().collect();
     if chars.is_empty() {
@@ -665,6 +718,8 @@ pub struct Info {
     dirty: bool,
     token_set: bool,
     token_hint: String,
+    servers: Vec<ServerEntry>,
+    token_error: String,
     config: Config,
     adapter: Adapter,
 }
@@ -673,6 +728,10 @@ fn info(with_adapter: bool) -> Info {
     let mut config = load_config();
     let hint = token_hint(&config.token);
     let token_set = !config.token.is_empty();
+    let (servers, token_error) = match parse_token(&config.token) {
+        Ok(v) => (v, String::new()),
+        Err(e) => (Vec::new(), e),
+    };
     config.token.clear();
     let run = running();
     Info {
@@ -682,6 +741,8 @@ fn info(with_adapter: bool) -> Info {
         dirty: !run && read_session().active,
         token_set,
         token_hint: hint,
+        servers,
+        token_error,
         config,
         adapter: if with_adapter && cfg!(windows) { adapter_now() } else { Adapter::default() },
     }
@@ -894,6 +955,28 @@ mod tests {
         assert!(validate(&Config { exclude_networks: "10.0.0.0/33".into(), ..cfg() }).is_err());
         assert!(validate(&Config { token: "a b".into(), ..cfg() }).is_err());
         assert!(validate(&Config { split_domains: "bad_domain!".into(), ..cfg() }).is_err());
+    }
+
+    #[test]
+    fn parse_plain_token() {
+        use base64::Engine;
+        let j = r#"{"version":1,"service_name":"x","username":"u","password":"SECRET","servers":[{"name":"Finland","host":"1.2.3.4","port":443,"md5_fingerprint":"ab"},{"name":"Germany","host":"5.6.7.8","port":443,"md5_fingerprint":"cd"}]}"#;
+        let t = format!("fptn:{}", base64::engine::general_purpose::STANDARD.encode(j));
+        let s = parse_token(&t).unwrap();
+        assert_eq!(s.len(), 2);
+        assert_eq!(s[0].name, "Finland");
+        assert_eq!(s[1].host, "5.6.7.8");
+        assert!(parse_token("").unwrap().is_empty());
+        assert!(parse_token("fptn:!!!").is_err());
+    }
+
+    #[test]
+    fn parse_real_token_from_env() {
+        if let Ok(t) = std::env::var("FPTN_TEST_TOKEN") {
+            let s = parse_token(&t).unwrap();
+            eprintln!("servers: {:?}", s.iter().map(|x| x.name.clone()).collect::<Vec<_>>());
+            assert!(!s.is_empty());
+        }
     }
 
     #[test]

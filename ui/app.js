@@ -41,7 +41,7 @@
     discord: { mode: 'auto', strategy: 'general (ALT2)', game: false, ipset: 'none', lastTest: 'сегодня, 14:32', autoupd: true, ipsetUpdated: 'сегодня, 09:12' },
     telegram: { port: '1443', link: '' },
     fc: { token_in: '', bypass_method: 'sni-spoofing-yandex-26-4', strategy: 'rolling-tunnel', sni: 'google.com', mtu: '1420', preferred_server: '', tun_name: 'FPTN', tun_ip: '10.0.0.1', exclude_networks: '10.0.0.0/8,192.168.0.0/16', include_networks: '', split: false, split_mode: 'exclude', split_domains: '', adblock: true, blacklist: '', auto_gateway: true, remove_adapter: true, autostart: false },
-    fptn: { tokenSet: false, hint: '', adapter: { exists: false, status: '', description: '' }, dirty: false, busy: false, repairMsg: '', logOpen: false, log: '' },
+    fptn: { tokenSet: false, hint: '', servers: [], tokenError: '', adapter: { exists: false, status: '', description: '' }, dirty: false, busy: false, repairMsg: '', logOpen: false, log: '' },
     tgc: { autostart: false, host: '127.0.0.1', port: '1443', secret: '', dc_ip: '2:149.154.167.220\n4:149.154.167.220', verbose: false, buf_kb: '256', pool_size: '4', log_max_mb: '5', cfproxy: true, h2: true, cf_domain_on: false, cf_domain: '', cf_worker_on: false, cf_worker: '', force_test_dc: false, no_secure: false, fake_tls_domain: '' },
     lists: {
       general: { file: 'list-general-user.txt', title: 'Свои домены', hint: 'Домены для обхода, по одному на строку. Поддомены учитываются автоматически.', text: '# по одному домену на строку\nexample.org\ncdn.example.org\n' },
@@ -611,6 +611,7 @@
     Object.keys(S.fc).forEach(function (k) { if (k !== 'token_in' && c[k] !== undefined) S.fc[k] = FNUM.indexOf(k) >= 0 ? String(c[k]) : c[k]; });
     var f = S.fptn;
     f.tokenSet = !!st.token_set; f.hint = st.token_hint || '';
+    f.servers = st.servers || []; f.tokenError = st.token_error || '';
     f.adapter = st.adapter || f.adapter;
     f.dirty = !!st.dirty;
     S.on.fptn = !!st.running;
@@ -636,7 +637,18 @@
   function fSaveToken() {
     var t = (S.fc.token_in || '').trim();
     if (!t) { toast('Вставьте токен.', 'warn'); return; }
-    fSave(t).then(function () { if (S.fptn.tokenSet) { S.fc.token_in = ''; toast('Токен сохранён'); renderAll(); } });
+    fSave(t).then(function () { if (S.fptn.tokenSet) { S.fc.token_in = ''; if (S.fptn.tokenError) toast('Токен сохранён, но не разобран: ' + S.fptn.tokenError, 'warn'); else toast('Токен сохранён, серверов: ' + S.fptn.servers.length); renderAll(); } });
+  }
+  function fServer(name) {
+    var cur = (S.fc.preferred_server || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+    if (!name) cur = [];
+    else {
+      var i = cur.findIndex(function (x) { return x.toLowerCase() === name.toLowerCase(); });
+      if (i >= 0) cur.splice(i, 1); else cur.push(name);
+    }
+    S.fc.preferred_server = cur.join(',');
+    renderAll();
+    fSave().then(function () { toast(cur.length ? 'Сервер: ' + cur.join(', ') + '. Применится при следующем подключении.' : 'Сервер: автовыбор. Применится при следующем подключении.'); });
   }
   function fClearToken() {
     if (!inTauri || !installed('fptn')) return;
@@ -743,6 +755,18 @@
     dis('#fAdOn', !a.exists || a.status === 'Up' || f.busy);
     dis('#fAdOff', !a.exists || a.status === 'Disabled' || f.busy);
     dis('#fAdDel', !a.exists || S.on.fptn || f.busy);
+    var sl = $('#fServers');
+    if (sl) {
+      var picked = (S.fc.preferred_server || '').split(',').map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
+      if (!f.servers.length) {
+        sl.innerHTML = '<span class="note">' + (f.tokenError ? 'Токен не удалось разобрать: ' + esc(f.tokenError) : 'Добавьте токен, и здесь появится список серверов.') + '</span>';
+      } else {
+        sl.innerHTML = '<button class="btn sm' + (picked.length ? '' : ' primary') + '" data-act="fServer" data-arg="">Автовыбор</button>' + f.servers.map(function (s) {
+          var on = picked.indexOf(s.name.toLowerCase()) >= 0;
+          return '<button class="btn sm' + (on ? ' primary' : '') + '" data-act="fServer" data-arg="' + esc(s.name) + '" title="' + esc(s.host + ':' + s.port) + '">' + esc(s.name) + '</button>';
+        }).join('');
+      }
+    }
     var d = $('#fDirty'); if (d) d.hidden = !f.dirty;
     var rm = $('#fRepairMsg'); if (rm) { rm.hidden = !f.repairMsg; rm.textContent = f.repairMsg; }
     var lg = $('#fLog'); if (lg) { lg.hidden = !f.logOpen; lg.textContent = f.log || ''; }
@@ -1130,7 +1154,7 @@
     toggleAll: toggleAll,
     checkUpdates: checkUpdates,
     autotest: autotest,
-    fSave: function () { fSave(); }, fSaveToken: fSaveToken, fClearToken: fClearToken, fReset: fReset, fRepair: fRepair, fLog: fLog,
+    fSave: function () { fSave(); }, fSaveToken: fSaveToken, fServer: fServer, fClearToken: fClearToken, fReset: fReset, fRepair: fRepair, fLog: fLog,
     fAdapter: function (a) { fAdapter(a); }, fTakeOver: function (a) { fTakeOver(a); },
     tgSave: tgSave, tgReset: tgReset, tgSecret: tgSecret,
     copyTg: function () { copyText($('#tgLink').value, 'Ссылка скопирована'); },

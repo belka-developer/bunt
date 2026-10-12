@@ -369,3 +369,6 @@ body.app .view { height: 100vh; overflow-y: auto; }
 .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 
 .logbox { margin: 8px 0 0; max-height: 220px; overflow: auto; background: var(--win); border: 1px solid var(--line-2); border-radius: 8px; padding: 10px; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; color: var(--muted); }
+
+.srv-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.srv-list .btn:not(.primary) { background: var(--panel); }
