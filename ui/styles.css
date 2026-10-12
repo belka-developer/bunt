@@ -41,7 +41,7 @@ button { font: inherit; color: inherit; }
 .bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .mark { width: 46px; height: 46px; border-radius: 13px; background: linear-gradient(145deg, #0f2d2b, #0b1822); border: 1px solid var(--line-2); display: grid; place-items: center; color: var(--accent); flex: none; }
-.mark .ic { width: 26px; height: 26px; }
+.mark .ic { width: 30px; height: 30px; }
 .wordmark { font-family: var(--font-display); font-weight: 600; font-size: 22px; letter-spacing: 0.01em; line-height: 1.1; }
 .tagline { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
 
