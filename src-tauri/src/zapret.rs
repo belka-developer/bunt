@@ -148,7 +148,7 @@ pub(crate) fn list_procs(name: &str) -> Vec<(u32, String)> {
     {
         let script = format!("[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Process {name} -ErrorAction SilentlyContinue | ForEach-Object {{ \"$($_.Id)|$($_.Path)\" }}");
         if let Ok(o) = Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .args(["-NoProfile", "-NonInteractive", "-Command", script.as_str()])
             .creation_flags(CREATE_NO_WINDOW)
             .output()
         {

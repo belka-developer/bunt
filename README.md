@@ -1,13 +1,13 @@
 # Бунт
 
-Единый центр сетевых инструментов для Windows. Первым внутри будет запрет для Discord и YouTube на основе [zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube), Telegram на основе [tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy), позже VLESS и WireGuard.
+Единый центр сетевых инструментов для Windows. Первым внутри будет запрет для Discord и YouTube на основе [zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube), Telegram на основе [tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy), VPN-клиент FPTN с защитой сети, позже VLESS и WireGuard.
 
 Приложение написано на Tauri 2 (Rust и обычные HTML, CSS, JS) и обновляется само из GitHub Releases, когда пользователь нажимает кнопку.
 
 > **Статус: прототип.**
 > Настоящее: окно, значок в трее, один экземпляр, проверка и установка обновлений самого Бунта.
 > Макет с примерными данными: запрет Discord и YouTube, версии компонентов (помечены «демо»), проверка целостности, настройки. Настройки пока не сохраняются между запусками.
-> Разделы VLESS, WireGuard, DNS и FPTN показывают «Скоро».
+> Разделы VLESS, WireGuard и DNS показывают «Скоро».
 > Запрет для Discord/YouTube и для Telegram по умолчанию не установлен: пользователь сам нажимает «Установить» на главной или в разделе. Для Discord/YouTube установка настоящая: Бунт берёт последний релиз `Flowseal/zapret-discord-youtube`, проверяет хеш, распаковывает в `modules\discord\<версия>\` рядом с exe. Для Telegram Бунт берёт исходники последнего релиза `Flowseal/tg-ws-proxy` в `modules\telegram\<версия>\`, ставит рядом встроенный Python (`runtime`) и запускает прокси без окна; настройки и лог лежат в `modules\telegram\data`.
 
 ## Запуск для разработки
@@ -104,3 +104,8 @@ scripts/     bump.mjs: подъём версии
 ## Лицензия
 
 GNU General Public License v3.0.
+
+
+## FPTN
+
+Бунт скачивает официальный установщик из релиза `fptn-project/fptn`, тихо ставит его в `modules\fptn\<версия>` и запускает `fptn-client-cli.exe` без окна. Настройки, токен и состояние сессии лежат в `modules\fptn\data`. Перед подключением запоминается шлюз физического адаптера и статические DNS; после отключения или сбоя Бунт удаляет маршруты FPTN (через его адрес в туннеле и маршруты с метрикой 2 через шлюз), возвращает DNS и при желании удаляет адаптер Wintun. Нужны права администратора.

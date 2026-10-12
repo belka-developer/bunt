@@ -64,7 +64,7 @@
             <button class="nav" data-go="vless"><svg class="ic"><use href="#i-net"/></svg>VLESS<span class="soon-tag">скоро</span></button>
             <button class="nav" data-go="wg"><svg class="ic"><use href="#i-vpn"/></svg>WireGuard<span class="soon-tag">скоро</span></button>
             <button class="nav" data-go="dns"><svg class="ic"><use href="#i-globe"/></svg>DNS<span class="soon-tag">скоро</span></button>
-            <button class="nav" data-go="fptn"><svg class="ic"><use href="#i-tunnel"/></svg>FPTN<span class="soon-tag">скоро</span></button>
+            <button class="nav" data-go="fptn"><svg class="ic"><use href="#i-tunnel"/></svg>FPTN</button>
             <button class="nav" data-go="security"><svg class="ic"><use href="#i-shield"/></svg>Безопасность</button>
             <button class="nav" data-go="updates"><svg class="ic"><use href="#i-download"/></svg>Обновления<span class="nav-dot" id="navDot" hidden></span></button>
             <button class="nav" data-go="settings"><svg class="ic"><use href="#i-sliders"/></svg>Настройки</button>
@@ -305,12 +305,98 @@
             </div>
           </section>
 
-          <section data-page="fptn" data-soon hidden>
-            <div class="soon">
-              <span class="badge b-fptn"><svg class="ic"><use href="#i-tunnel"/></svg></span>
-              <span class="tag warn">Скоро</span>
-              <h1>FPTN</h1>
-              <p class="sub">Здесь появится управление VPN-клиентом FPTN: токен, сервер и метод обхода блокировок. Раздел в разработке.</p>
+          <section data-page="fptn" hidden>
+            <div class="page-head">
+              <div>
+                <h1>FPTN</h1>
+                <p class="sub">VPN-клиент FPTN под присмотром Бунта: после отключения или сбоя маршруты и DNS возвращаются сами, сбрасывать сеть Windows не нужно.</p>
+              </div>
+              <div class="head-sw"><span class="state" data-state="fptn"></span><button class="sw" role="switch" data-svc="fptn" aria-label="FPTN"></button></div>
+            </div>
+            <div class="panel install" id="inst-fptn" hidden>
+              <span class="badge b-fptn" id="instBadge-fptn"></span>
+              <h3>Не установлено</h3>
+              <p class="sub">Бунт скачает официальный установщик FPTN, проверит его хеш и тихо установит клиент в папку <span class="mono">modules</span>, без ярлыков и автозапуска. Нужны права администратора.</p>
+              <div class="inst-meta"><span>Источник: <b class="mono">fptn-project/fptn</b></span><span>Версия на GitHub: <b class="mono" data-latest="fptn">…</b></span></div>
+              <div class="note mono" data-modpath hidden></div>
+              <div id="instAct-fptn"></div>
+            </div>
+            <div data-body="fptn">
+            <div id="fDirty" class="sec-fix" hidden><span>Прошлая сессия FPTN не была закрыта. Маршруты или DNS могли остаться изменёнными.</span><button class="btn sm primary" data-act="fRepair">Починить сеть</button></div>
+            <div class="cols">
+              <div class="stack">
+                <div class="panel">
+                  <h3>Токен доступа</h3>
+                  <p class="note" id="fToken">Токен не добавлен.</p>
+                  <div class="field-row mt-s">
+                    <input class="field mono" type="password" data-bind="fc.token_in" placeholder="Вставьте токен целиком" autocomplete="off" spellcheck="false" aria-label="Токен">
+                    <button class="btn primary" data-act="fSaveToken">Сохранить</button>
+                    <button class="btn" data-act="fClearToken">Удалить</button>
+                  </div>
+                  <p class="note mt-s">Токен выдаёт Telegram-бот FPTN. Он хранится в папке <span class="mono">modules\fptn\data</span> и в интерфейсе не показывается.</p>
+                </div>
+                <div class="panel">
+                  <h3>Подключение</h3>
+                  <div class="row"><div class="lbl">Метод обхода<small>Как трафик маскируется под обычный HTTPS</small></div><select class="field" data-bind="fc.bypass_method" aria-label="Метод обхода" style="width:210px"><option value="obfuscation">Обфускация TLS</option><option value="sni-spoofing-chrome-149">Chrome 149</option><option value="sni-spoofing-chrome-148">Chrome 148</option><option value="sni-spoofing-chrome-147">Chrome 147</option><option value="sni-spoofing-chrome-146">Chrome 146</option><option value="sni-spoofing-chrome-145">Chrome 145</option><option value="sni-spoofing-firefox-151">Firefox 151</option><option value="sni-spoofing-firefox-150">Firefox 150</option><option value="sni-spoofing-firefox-149">Firefox 149</option><option value="sni-spoofing-yandex-26-4">Яндекс Браузер 26.4</option><option value="sni-spoofing-yandex-26-3">Яндекс Браузер 26.3</option><option value="sni-spoofing-yandex-25">Яндекс Браузер 25</option><option value="sni-spoofing-yandex-24">Яндекс Браузер 24</option><option value="sni-spoofing-safari-26-5">Safari 26.5</option><option value="sni-spoofing-safari-26-4">Safari 26.4</option></select></div>
+                  <div class="row"><div class="lbl">Стратегия соединения<small>Сколько туннелей держать одновременно</small></div><select class="field" data-bind="fc.strategy" aria-label="Стратегия" style="width:210px"><option value="rolling-tunnel">Один туннель</option><option value="dual-rolling-tunnel">Два туннеля</option><option value="triple-rolling-tunnel">Три туннеля</option></select></div>
+                  <div class="row"><div class="lbl">Предпочитаемый сервер<small>Имена через запятую, пусто: любой</small></div><input class="field mono" data-bind="fc.preferred_server" spellcheck="false" aria-label="Сервер" style="width:210px"></div>
+                  <div class="row"><div class="lbl">SNI<small>Домен в TLS-рукопожатии</small></div><input class="field mono" data-bind="fc.sni" spellcheck="false" aria-label="SNI" style="width:210px"></div>
+                  <div class="row"><div class="lbl">MTU<small>От 576 до 65535</small></div><input class="field mono" data-bind="fc.mtu" inputmode="numeric" aria-label="MTU" style="width:110px"></div>
+                </div>
+                <div class="panel">
+                  <h3>Маршрутизация</h3>
+                  <div class="row"><div class="lbl">Мимо VPN<small>Сети через запятую, трафик к ним идёт напрямую</small></div></div>
+                  <input class="field mono" data-bind="fc.exclude_networks" spellcheck="false" aria-label="Исключаемые сети" placeholder="10.0.0.0/8, 192.168.0.0/16">
+                  <div class="row"><div class="lbl">Всегда через VPN<small>Сети через запятую</small></div></div>
+                  <input class="field mono" data-bind="fc.include_networks" spellcheck="false" aria-label="Сети через VPN" placeholder="172.16.0.0/12">
+                  <div class="row"><div class="lbl">Раздельный туннель<small>Решать по доменам, что идёт через VPN</small></div><button class="sw" role="switch" data-sw="fc.split" aria-label="Раздельный туннель"></button></div>
+                  <div class="row"><span class="lbl">Режим</span><select class="field" data-bind="fc.split_mode" aria-label="Режим раздельного туннеля" style="width:250px"><option value="exclude">Перечисленные домены мимо VPN</option><option value="include">Только перечисленные через VPN</option></select></div>
+                  <input class="field mono mt-s" data-bind="fc.split_domains" spellcheck="false" aria-label="Домены раздельного туннеля" placeholder="ru, vk.com (пусто: список клиента)">
+                  <div class="row"><div class="lbl">Блокировка рекламы<small>На уровне DNS</small></div><button class="sw" role="switch" data-sw="fc.adblock" aria-label="Блокировка рекламы"></button></div>
+                  <div class="row"><div class="lbl">Заблокированные домены<small>Пусто: список клиента по умолчанию</small></div></div>
+                  <input class="field mono" data-bind="fc.blacklist" spellcheck="false" aria-label="Заблокированные домены" placeholder="example.com, example.org">
+                </div>
+              </div>
+              <div class="stack">
+                <div class="panel">
+                  <h3>Виртуальный адаптер</h3>
+                  <div class="row"><span class="lbl">Состояние</span><span class="val" id="fAdState">–</span></div>
+                  <div class="row"><span class="lbl">Драйвер</span><span class="val" id="fAdDesc">–</span></div>
+                  <div class="row" style="justify-content:flex-end;gap:8px;flex-wrap:wrap">
+                    <button class="btn sm" data-act="fAdapter" data-arg="enable" id="fAdOn">Включить</button>
+                    <button class="btn sm" data-act="fAdapter" data-arg="disable" id="fAdOff">Отключить</button>
+                    <button class="btn sm danger" data-act="fAdapter" data-arg="remove" id="fAdDel">Удалить</button>
+                  </div>
+                  <div class="row"><div class="lbl">Имя адаптера<small>Бунт управляет только им, чужие адаптеры не трогает</small></div><input class="field mono" data-bind="fc.tun_name" spellcheck="false" aria-label="Имя адаптера" style="width:130px"></div>
+                  <div class="row"><div class="lbl">Адрес адаптера<small>IPv4 внутри туннеля</small></div><input class="field mono" data-bind="fc.tun_ip" spellcheck="false" aria-label="Адрес адаптера" style="width:130px"></div>
+                  <div class="row"><div class="lbl">Удалять адаптер после отключения<small>Чтобы не копились «неопознанные сети»</small></div><button class="sw" role="switch" data-sw="fc.remove_adapter" aria-label="Удалять адаптер"></button></div>
+                </div>
+                <div class="panel">
+                  <h3>Защита сети</h3>
+                  <p class="note">Перед подключением Бунт запоминает основной шлюз и DNS. После отключения, сбоя или выхода из Бунта он убирает только маршруты FPTN, возвращает DNS и закрывает адаптер. Сброс сети Windows не нужен, Radmin VPN и другие адаптеры не затрагиваются.</p>
+                  <div class="row"><div class="lbl">Искать шлюз автоматически<small>Только среди Ethernet и Wi-Fi, в обход Radmin, Hamachi и других VPN</small></div><button class="sw" role="switch" data-sw="fc.auto_gateway" aria-label="Искать шлюз автоматически"></button></div>
+                  <div class="row"><div class="lbl">Починить сеть<small>Убрать следы FPTN вручную, пока он отключён</small></div><button class="btn sm" data-act="fRepair">Починить</button></div>
+                  <p class="note mt-s" id="fRepairMsg" hidden></p>
+                </div>
+                <div class="panel">
+                  <h3>Дополнительно</h3>
+                  <div class="row"><div class="lbl">Подключаться при запуске Бунта<small>Включите вместе с автозапуском Бунта в «Настройках»</small></div><button class="sw" role="switch" data-sw="fc.autostart" aria-label="Подключаться при запуске"></button></div>
+                  <div class="row" style="justify-content:flex-end;gap:8px">
+                    <button class="btn" data-act="fReset">Сбросить</button>
+                    <button class="btn primary" data-act="fSave">Применить</button>
+                  </div>
+                  <p class="note mt-s">Настройки применяются при следующем подключении. Токен сохраняется отдельной кнопкой.</p>
+                  <div class="row"><span class="lbl">Лог клиента</span><button class="btn sm" data-act="fLog">Показать</button></div>
+                  <pre class="logbox" id="fLog" hidden></pre>
+                </div>
+                <div class="panel">
+                  <h3>Компонент</h3>
+                  <div class="row"><span class="lbl">Версия</span><span class="val" id="fVer">–</span></div>
+                  <div class="row"><span class="lbl">Источник</span><span class="val">fptn-project/fptn</span></div>
+                  <div class="row"><span class="lbl">Режим</span><span class="val">Консольный клиент, без окна</span></div>
+                </div>
+              </div>
+            </div>
             </div>
           </section>
 

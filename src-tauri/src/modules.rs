@@ -24,6 +24,7 @@ pub(crate) fn source(id: &str) -> Result<(&'static str, &'static str), String> {
     match id {
         "discord" => Ok(("Flowseal", "zapret-discord-youtube")),
         "telegram" => Ok(("Flowseal", "tg-ws-proxy")),
+        "fptn" => Ok(("fptn-project", "fptn")),
         _ => Err(format!("Неизвестный компонент: {id}")),
     }
 }
@@ -286,6 +287,9 @@ pub async fn install_component(
         return Ok(version);
     }
 
+    if id == "fptn" {
+        return install_fptn(&app, &rel, &version, &root, &target).await;
+    }
     let (url, digest) = pick_archive(&rel)?;
     let staging = root.join(".staging");
     let _ = fs::remove_dir_all(&staging);
@@ -332,7 +336,7 @@ pub async fn install_component(
     if let Ok(rd) = fs::read_dir(root.join(&id)) {
         for e in rd.flatten() {
             let n = e.file_name().to_string_lossy().to_string();
-            if n != version.as_str() && !(id == "telegram" && crate::telegram::is_service_dir(&n)) {
+            if n != version.as_str() && !(id == "telegram" && crate::telegram::is_service_dir(&n)) && !(id == "fptn" && crate::fptn::is_service_dir(&n)) {
                 let _ = fs::remove_dir_all(e.path());
             }
         }
@@ -344,7 +348,13 @@ pub async fn install_component(
 #[tauri::command]
 pub async fn uninstall_component(state: tauri::State<'_, crate::zapret::Zapret>, id: String) -> Result<(), String> {
     source(&id)?;
-    if id == "telegram" {
+    if id == "fptn" {
+        // Остановить клиент, убрать маршруты и адаптер, запустить штатный деинсталлятор, затем стереть папку
+        let _ = tauri::async_runtime::spawn_blocking(crate::fptn::shutdown).await;
+        if let Ok(dir) = active_dir("fptn") {
+            run_fptn_uninstaller(&dir);
+        }
+    } else if id == "telegram" {
         crate::telegram::stop();
         crate::telegram::set_enabled(false);
     } else {
@@ -384,10 +394,15 @@ async fn download_and_extract(
         hasher.update(&chunk);
         file.write_all(&chunk).map_err(|e| e.to_string())?;
         downloaded += chunk.len() as u64;
-        // У Telegram загрузка файлов это первая пятая часть установки, дальше ставится Python
-        if id == "telegram" {
+        // У Telegram загрузка файлов это первая пятая часть установки (дальше ставится Python), у FPTN три пятых
+        let part = match id {
+            "telegram" => Some((20, "Скачиваем файлы прокси")),
+            "fptn" => Some((60, "Скачиваем установщик FPTN")),
+            _ => None,
+        };
+        if let Some((share, label)) = part {
             if let Some(t) = total.filter(|t| *t > 0) {
-                progress(app, id, downloaded * 20 / t, 100, "Скачиваем файлы прокси");
+                progress(app, id, downloaded * share / t, 100, label);
             }
         } else {
             let _ = app.emit("module-progress", Progress { id: id.to_string(), downloaded, total, stage: None });
@@ -463,4 +478,131 @@ pub async fn release_notes(id: String) -> Result<Notes, String> {
         url: rel.html_url.unwrap_or_else(|| format!("https://github.com/{owner}/{repo}/releases")),
         published: rel.published_at,
     })
+}
+
+// ───────── FPTN: официальный установщик Inno Setup ─────────
+
+fn find_installer(dir: &Path) -> Option<PathBuf> {
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let Ok(rd) = fs::read_dir(&d) else { continue };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().map(|x| x.eq_ignore_ascii_case("exe")).unwrap_or(false) {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
+/// Убирает окна и процессы, которые установщик запускает после себя (клиент FPTN с треем).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn kill_fptn_in(dir: &Path) {
+    for name in ["fptn-client", "fptn-client-cli"] {
+        for (pid, path) in crate::zapret::list_procs(name) {
+            if path.to_lowercase().replace('/', "\\").starts_with(&dir.display().to_string().to_lowercase().replace('/', "\\")) {
+                crate::zapret::kill_pid(pid);
+            }
+        }
+    }
+}
+
+fn run_fptn_uninstaller(dir: &Path) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let un = dir.join("unins000.exe");
+        if un.is_file() {
+            let _ = std::process::Command::new(un)
+                .args(["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"])
+                .creation_flags(0x0800_0000)
+                .status();
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = dir;
+}
+
+/// FPTN распространяется установщиком. Бунт запускает его тихо сразу в `modules\fptn\<версия>`,
+/// без ярлыков, и убирает автозапуск клиента, который установщик пытается открыть.
+async fn install_fptn(app: &AppHandle, rel: &Release, version: &str, root: &Path, target: &Path) -> Result<String, String> {
+    if !cfg!(windows) {
+        return Err("FPTN ставится только в Windows.".into());
+    }
+    if !crate::settings::is_admin_sync() {
+        return Err("Для установки FPTN нужны права администратора.".into());
+    }
+    let asset = rel
+        .assets
+        .iter()
+        .find(|a| a.name.to_lowercase().starts_with("fptnclientinstaller") && a.name.to_lowercase().ends_with(".zip"))
+        .ok_or("В релизе не нашёлся установщик Windows (GitHub мог ограничить запросы, повторите позже).")?;
+    let staging = root.join(".staging");
+    let _ = fs::remove_dir_all(&staging);
+    fs::create_dir_all(&staging).map_err(|e| format!("Нет прав на запись в {}: {e}", staging.display()))?;
+
+    let result: Result<(), String> = async {
+        let unpacked = download_and_extract(app, "fptn", &asset.browser_download_url, asset.digest.as_deref(), &staging).await?;
+        let installer = find_installer(&unpacked).ok_or("В архиве нет установщика .exe")?;
+        progress(app, "fptn", 65, 100, "Останавливаем клиент");
+        let _ = tauri::async_runtime::spawn_blocking(crate::fptn::shutdown).await;
+        if target.is_dir() {
+            fs::remove_dir_all(target).map_err(|e| format!("Не удалось удалить старые файлы: {e}"))?;
+        }
+        fs::create_dir_all(target.parent().ok_or("Неверный путь")?).map_err(|e| e.to_string())?;
+        progress(app, "fptn", 70, 100, "Устанавливаем FPTN (около минуты)");
+        let target_s = target.display().to_string();
+        let t2 = target.to_path_buf();
+        tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                let status = std::process::Command::new(&installer)
+                    .args(["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOICONS", "/SP-"])
+                    .raw_arg(format!("/DIR=\"{target_s}\""))
+                    .creation_flags(0x0800_0000)
+                    .status()
+                    .map_err(|e| format!("Не удалось запустить установщик: {e}"))?;
+                // Установщик в конце открывает клиент с треем: он нам не нужен
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                kill_fptn_in(&t2);
+                if !status.success() {
+                    return Err(format!("Установщик FPTN завершился с кодом {}", status.code().unwrap_or(-1)));
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                let _ = (installer, target_s, t2);
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        if !target.join(crate::fptn::CLI).is_file() {
+            let _ = fs::remove_dir_all(target);
+            return Err("После установки не нашёлся fptn-client-cli.exe".into());
+        }
+        progress(app, "fptn", 95, 100, "Записываем хеши файлов");
+        let _ = crate::integrity::write_manifest(target);
+        Ok(())
+    }
+    .await;
+    let _ = fs::remove_dir_all(&staging);
+    result?;
+
+    let mut st = read_state(root);
+    st.insert("fptn".into(), version.to_string());
+    write_state(root, &st)?;
+    if let Ok(rd) = fs::read_dir(root.join("fptn")) {
+        for e in rd.flatten() {
+            let n = e.file_name().to_string_lossy().to_string();
+            if n != version && !crate::fptn::is_service_dir(&n) {
+                let _ = fs::remove_dir_all(e.path());
+            }
+        }
+    }
+    Ok(version.to_string())
 }

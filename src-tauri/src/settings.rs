@@ -229,7 +229,8 @@ pub fn open_url(url: String) -> Result<(), String> {
     let ok = ALLOWED.contains(&url.as_str())
         || url.starts_with("https://github.com/belka-developer/bunt/")
         || url.starts_with("https://github.com/Flowseal/zapret-discord-youtube/")
-        || url.starts_with("https://github.com/Flowseal/tg-ws-proxy/");
+        || url.starts_with("https://github.com/Flowseal/tg-ws-proxy/")
+        || url.starts_with("https://github.com/fptn-project/fptn/");
     if !ok {
         return Err("Эту ссылку открыть нельзя".into());
     }

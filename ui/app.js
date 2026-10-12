@@ -9,6 +9,7 @@
   var SVC = {
     discord: { name: 'Zapret (Discord)', icon: 'chat', cls: 'b-discord' },
     telegram: { name: 'Zapret (Telegram)', icon: 'plane', cls: 'b-telegram' },
+    fptn: { name: 'FPTN', icon: 'tunnel', cls: 'b-fptn' },
     vless: { name: 'VLESS', icon: 'net', cls: 'b-vless' },
     wg: { name: 'WireGuard', icon: 'vpn', cls: 'b-wg' }
   };
@@ -36,9 +37,11 @@
 
   var S = {
     page: 'home',
-    on: { discord: false, telegram: false, vless: false, wg: false },
+    on: { discord: false, telegram: false, fptn: false, vless: false, wg: false },
     discord: { mode: 'auto', strategy: 'general (ALT2)', game: false, ipset: 'none', lastTest: 'сегодня, 14:32', autoupd: true, ipsetUpdated: 'сегодня, 09:12' },
     telegram: { port: '1443', link: '' },
+    fc: { token_in: '', bypass_method: 'sni-spoofing-yandex-26-4', strategy: 'rolling-tunnel', sni: 'google.com', mtu: '1420', preferred_server: '', tun_name: 'FPTN', tun_ip: '10.0.0.1', exclude_networks: '10.0.0.0/8,192.168.0.0/16', include_networks: '', split: false, split_mode: 'exclude', split_domains: '', adblock: true, blacklist: '', auto_gateway: true, remove_adapter: true, autostart: false },
+    fptn: { tokenSet: false, hint: '', adapter: { exists: false, status: '', description: '' }, dirty: false, busy: false, repairMsg: '', logOpen: false, log: '' },
     tgc: { autostart: false, host: '127.0.0.1', port: '1443', secret: '', dc_ip: '2:149.154.167.220\n4:149.154.167.220', verbose: false, buf_kb: '256', pool_size: '4', log_max_mb: '5', cfproxy: true, h2: true, cf_domain_on: false, cf_domain: '', cf_worker_on: false, cf_worker: '', force_test_dc: false, no_secure: false, fake_tls_domain: '' },
     lists: {
       general: { file: 'list-general-user.txt', title: 'Свои домены', hint: 'Домены для обхода, по одному на строку. Поддомены учитываются автоматически.', text: '# по одному домену на строку\nexample.org\ncdn.example.org\n' },
@@ -68,6 +71,7 @@
       { id: 'app', name: 'Бунт', cur: '0.1.0', next: null, checked: true, rel: { version: '0.1.0', url: 'https://github.com/belka-developer/bunt/releases', body: '## Первая версия\n- Запрет для Discord и YouTube на основе zapret-discord-youtube\n- Обновление Бунта одной кнопкой\n- Значок в трее' }, cls: 'b-app', icon: 'mark', size: '8.4 МБ', src: 'belka-developer/bunt (GitHub)', sha: 'a91c07d2e5b3…4f60', notes: [], busy: null },
       { id: 'discord', name: 'Zapret (Discord)', checked: true, cur: null, latest: '1.2.3', next: null, cls: 'b-discord', icon: 'chat', size: '12.4 МБ', src: 'Flowseal/zapret-discord-youtube (GitHub)', sha: '3f8e2c4d6a1b…9e07', notes: [], busy: null },
       { id: 'telegram', name: 'Zapret (Telegram)', cur: null, latest: '1.2.4', next: null, cls: 'b-telegram', icon: 'plane', size: '3.1 МБ', src: 'Flowseal/tg-ws-proxy (GitHub)', sha: '7be04a19c3d8…12ff', notes: [], busy: null },
+      { id: 'fptn', name: 'FPTN', cur: null, latest: '0.4.6', next: null, cls: 'b-fptn', icon: 'tunnel', size: '58.5 МБ', src: 'fptn-project/fptn (GitHub)', sha: '–', notes: [], busy: null },
       { id: 'vless', name: 'VLESS', cur: '2.0.1', next: null, cls: 'b-vless', icon: 'net', size: '21.7 МБ', src: 'GitHub Releases', sha: 'c20d5e71b8a4…03aa', notes: [], busy: null },
       { id: 'wg', name: 'WireGuard', cur: '0.5.3', next: null, cls: 'b-wg', icon: 'vpn', size: '4.6 МБ', src: 'GitHub Releases', sha: '5d1f9a3e07c2…8b11', notes: [], busy: null }
     ],
@@ -116,6 +120,7 @@
 
   function renderCards() {
     var meta = {
+      fptn: function () { return [['Метод', S.fc.bypass_method === 'obfuscation' ? 'Обфускация' : 'SNI-маскировка'], ['Адаптер', S.fc.tun_name]]; },
       discord: function () { return [['Метод', 'winws'], ['Режим', S.discord.mode === 'auto' ? 'Авто' : 'Вручную']]; },
       telegram: function () { return [['Метод', 'MTProto-прокси'], ['Порт', String(S.telegram.port)]]; },
       vless: function () { return [['Сервер', selName('vless') || 'Не выбран'], ['Профиль', S.sel.vless ? 'Основной' : 'Нет']]; },
@@ -146,7 +151,7 @@
   }
 
   function renderInstall() {
-    ['discord', 'telegram'].forEach(function (id) {
+    ['discord', 'telegram', 'fptn'].forEach(function (id) {
       var c = comp(id), ok = installed(id), box = $('#inst-' + id), body = document.querySelector('[data-body="' + id + '"]');
       if (!box || !body) return;
       box.hidden = ok; body.hidden = !ok;
@@ -154,7 +159,7 @@
       if (sw) sw.parentNode.hidden = !ok;
       document.querySelector('[data-latest="' + id + '"]').textContent = c.latest || '…';
       $('#instAct-' + id).innerHTML = c.busy != null
-        ? '<span class="bar-track"><span class="bar-fill" style="width:' + c.busy + '%"></span></span><div class="note mt-s">' + (id === 'telegram' ? esc(c.stage || 'Готовим установку') + '… ' + c.busy + '%. Это займёт около минуты.' : 'Скачиваем и проверяем файлы… ' + c.busy + '%') + '</div>'
+        ? '<span class="bar-track"><span class="bar-fill" style="width:' + c.busy + '%"></span></span><div class="note mt-s">' + (id === 'telegram' || id === 'fptn' ? esc(c.stage || 'Готовим установку') + '… ' + c.busy + '%. Это займёт около минуты.' : 'Скачиваем и проверяем файлы… ' + c.busy + '%') + '</div>'
         : '<button class="btn primary" data-act="installComp" data-arg="' + id + '">' + ico('plus') + 'Установить</button>';
     });
   }
@@ -165,10 +170,10 @@
       null,
       ['chat', 'Запрет Discord и YouTube' + (installed('discord') ? (S.on.discord ? ' · включён' : ' · выключен') : ''), 'discord'],
       ['plane', 'Запрет Telegram' + (installed('telegram') ? (S.on.telegram ? ' · включён' : ' · выключен') : ''), 'telegram'],
+      ['tunnel', 'FPTN' + (installed('fptn') ? (S.on.fptn ? ' · подключён' : ' · отключён') : ''), 'fptn'],
       ['net', 'VLESS · скоро', null],
       ['vpn', 'WireGuard · скоро', null],
       ['globe', 'DNS · скоро', null],
-      ['tunnel', 'FPTN · скоро', null],
       null,
       ['download', 'Обновления', 'updates'],
       ['sliders', 'Настройки', 'settings']
@@ -274,7 +279,7 @@
   }
   function loadNotes() {
     if (!inTauri) return;
-    ['app', 'discord', 'telegram'].forEach(function (id) {
+    ['app', 'discord', 'telegram', 'fptn'].forEach(function (id) {
       var c = comp(id);
       if (!c || (id !== 'app' && !c.cur)) return;
       T.core.invoke('release_notes', { id: id }).then(function (n) {
@@ -369,7 +374,7 @@
     $('#btnSec').disabled = run;
     var bo = $('#btnSecOnline'); if (bo) bo.disabled = run;
     var fix = $('#secFix');
-    if (fix) fix.innerHTML = (bad && !run && inTauri) ? ['discord', 'telegram'].filter(installed).map(function (id) {
+    if (fix) fix.innerHTML = (bad && !run && inTauri) ? ['discord', 'telegram', 'fptn'].filter(installed).map(function (id) {
       return '<div class="sec-fix"><span>Файлы компонента «' + esc(comp(id).name) + '» отличаются от оригинала. Лучше всего переустановить его.</span><button class="btn sm primary" data-act="reinstallAsk" data-arg="' + id + '">Переустановить</button></div>';
     }).join('') : '';
     var RES = { ok: 'OK', warn: 'Внимание', bad: 'Нарушено', info: 'Заметка', run: 'Проверяю…', idle: 'Ожидает' };
@@ -393,7 +398,7 @@
 
   function renderAll() {
     renderSide(); renderCards(); renderTray(); renderHeads(); renderLog();
-    renderInstall(); renderDiscord(); renderTelegram(); renderProfiles('vless'); renderProfiles('wg');
+    renderInstall(); renderDiscord(); renderTelegram(); renderFptn(); renderProfiles('vless'); renderProfiles('wg');
     renderVersions(); renderNotes(); renderSecurity(); renderAdmin(); sync(); syncTray();
   }
 
@@ -419,6 +424,7 @@
     }
     if (inTauri && id === 'discord') { realDiscord(on, quiet); return true; }
     if (inTauri && id === 'telegram') { realTelegram(on, quiet); return true; }
+    if (inTauri && id === 'fptn') { realFptn(on, quiet); return true; }
     S.on[id] = on;
     var n = SVC[id].name;
     if (on) {
@@ -597,6 +603,153 @@
       if (!quiet) toast(String(err).slice(0, 200), 'warn');
     }).then(function () { tBusy = false; renderAll(); });
   }
+  /* FPTN: консольный клиент с защитой сети, нужны права администратора */
+  var FNUM = ['mtu'];
+  var FST = { Up: 'Включён', Disabled: 'Отключён', Disconnected: 'Не подключён', NotPresent: 'Отсутствует' };
+  function applyF(st) {
+    var c = st.config || {};
+    Object.keys(S.fc).forEach(function (k) { if (k !== 'token_in' && c[k] !== undefined) S.fc[k] = FNUM.indexOf(k) >= 0 ? String(c[k]) : c[k]; });
+    var f = S.fptn;
+    f.tokenSet = !!st.token_set; f.hint = st.token_hint || '';
+    f.adapter = st.adapter || f.adapter;
+    f.dirty = !!st.dirty;
+    S.on.fptn = !!st.running;
+  }
+  function fPayload() {
+    var o = {};
+    Object.keys(S.fc).forEach(function (k) { if (k !== 'token_in') o[k] = FNUM.indexOf(k) >= 0 ? parseInt(S.fc[k], 10) : S.fc[k]; });
+    o.token = '';
+    if (!(o.mtu >= 0)) return 'MTU';
+    return o;
+  }
+  function fErr(err) { toast(String(err).slice(0, 240), 'warn'); }
+  function fSave(extra) {
+    if (!inTauri || !installed('fptn')) return Promise.resolve();
+    var o = fPayload();
+    if (typeof o === 'string') { toast('Проверьте поле: ' + o, 'warn'); return Promise.resolve(); }
+    if (extra) o.token = extra;
+    return T.core.invoke('fptn_config_set', { config: o }).then(function (st) {
+      applyF(st);
+      if (!extra) toast('Настройки сохранены. Они применятся при следующем подключении.');
+    }).catch(fErr).then(renderAll);
+  }
+  function fSaveToken() {
+    var t = (S.fc.token_in || '').trim();
+    if (!t) { toast('Вставьте токен.', 'warn'); return; }
+    fSave(t).then(function () { if (S.fptn.tokenSet) { S.fc.token_in = ''; toast('Токен сохранён'); renderAll(); } });
+  }
+  function fClearToken() {
+    if (!inTauri || !installed('fptn')) return;
+    T.core.invoke('fptn_clear_token').then(function (st) { applyF(st); toast('Токен удалён'); }).catch(fErr).then(renderAll);
+  }
+  function fReset() {
+    if (!inTauri || !installed('fptn')) return;
+    T.core.invoke('fptn_config_reset').then(function (st) { applyF(st); toast('Настройки сброшены (токен прежний)'); }).catch(fErr).then(renderAll);
+  }
+  function fRepair() {
+    if (!inTauri || !installed('fptn')) return;
+    addLog({ svc: 'FPTN', m: 'Восстанавливаем сеть…' });
+    T.core.invoke('fptn_repair').then(function (d) {
+      applyF(d.info); S.fptn.repairMsg = d.message;
+      addLog({ svc: 'FPTN', m: d.message, ok: true });
+      toast(d.message);
+    }).catch(function (err) { S.fptn.repairMsg = String(err); fErr(err); }).then(renderAll);
+  }
+  function fAdapter(action) {
+    if (!inTauri || !installed('fptn')) return;
+    if (action === 'disable' && S.on.fptn && !window.confirm('FPTN подключён: отключение адаптера оборвёт VPN. Продолжить?')) return;
+    T.core.invoke('fptn_adapter', { action: action }).then(function (st) {
+      applyF(st);
+      toast({ enable: 'Адаптер включён', disable: 'Адаптер отключён', remove: 'Адаптер удалён' }[action]);
+    }).catch(fErr).then(renderAll);
+  }
+  function fLog() {
+    var f = S.fptn;
+    f.logOpen = !f.logOpen;
+    if (f.logOpen && inTauri) T.core.invoke('fptn_log').then(function (t) { f.log = t || 'Лог пуст.'; renderAll(); }).catch(function () {});
+    renderAll();
+  }
+  function askFptnTakeOver(f) {
+    var what = [];
+    if (f.procs.length) what.push('процесс: <span class="mono">' + esc(f.procs[0]) + '</span>' + (f.procs.length > 1 ? ' и ещё ' + (f.procs.length - 1) : ''));
+    if (f.autostart.length) what.push('автозагрузка Windows: <b class="mono">' + esc(f.autostart.join(', ')) + '</b>');
+    openModal('FPTN работает не из Бунта',
+      '<p>Найдено: ' + what.join('; ') + '.</p>' +
+      '<p class="note">Два клиента FPTN одновременно ломают маршрутизацию, из-за этого и пропадает интернет. Бунт закроет чужой клиент и запустит свой под защитой сети. Файлы на диске останутся.</p>',
+      '<button class="btn" data-act="closeModal">Отмена</button>' +
+      '<button class="btn' + (f.autostart.length ? '' : ' primary') + '" data-act="fTakeOver" data-arg="0">Отключить и подключиться из Бунта</button>' +
+      (f.autostart.length ? '<button class="btn primary" data-act="fTakeOver" data-arg="1">Отключить и убрать из автозагрузки</button>' : ''));
+  }
+  function fTakeOver(arg) {
+    closeModal();
+    if (S.fptn.busy) return;
+    S.fptn.busy = true; renderAll();
+    T.core.invoke('fptn_take_over', { removeAutostart: arg === '1' }).then(function () {
+      S.fptn.busy = false;
+      if (arg === '1') addLog({ svc: 'FPTN', m: 'Чужой FPTN убран из автозагрузки.' });
+      realFptn(true, false, true);
+    }).catch(function (err) { S.fptn.busy = false; fErr(err); renderAll(); });
+  }
+  function realFptn(on, quiet, skipCheck) {
+    var f = S.fptn;
+    if (f.busy) return;
+    if (on && !f.tokenSet) { if (!quiet) { toast('Сначала добавьте токен доступа.', 'warn'); go('fptn'); } return; }
+    if (on && adminNeeded(quiet)) return;
+    if (on && !skipCheck) {
+      f.busy = true;
+      T.core.invoke('fptn_foreign').then(function (x) {
+        f.busy = false;
+        if (x.procs.length || (x.autostart.length && !quiet)) askFptnTakeOver(x);
+        else realFptn(true, quiet, true);
+      }).catch(function () { f.busy = false; realFptn(true, quiet, true); });
+      return;
+    }
+    f.busy = true;
+    addLog({ svc: 'FPTN', m: on ? 'Подключаемся…' : 'Отключаемся и убираем маршруты…' });
+    renderAll();
+    var p = on
+      ? T.core.invoke('fptn_connect').then(function (st) { applyF(st); addLog({ m: 'FPTN подключён.', ok: true }); })
+      : T.core.invoke('fptn_disconnect').then(function (d) { applyF(d.info); addLog({ m: d.message, ok: true }); });
+    p.catch(function (err) {
+      S.on.fptn = false;
+      addLog({ svc: 'FPTN', m: 'Ошибка: ' + err });
+      if (!quiet || on) toast(String(err).slice(0, 240), 'warn');
+      T.core.invoke('fptn_status').then(function (st) { applyF(st); renderAll(); }).catch(function () {});
+    }).then(function () { f.busy = false; if (f.logOpen) T.core.invoke('fptn_log').then(function (t) { f.log = t; renderAll(); }).catch(function () {}); renderAll(); });
+  }
+  /* клиент мог завершиться сам: тогда проверяем, не осталось ли следов в сети, и чиним */
+  function watchFptn() {
+    if (!inTauri || !installed('fptn') || S.fptn.busy) return;
+    T.core.invoke('fptn_status').then(function (st) {
+      var was = S.on.fptn;
+      applyF(st);
+      if (was && !st.running) addLog({ svc: 'FPTN', m: 'Клиент FPTN завершился.' });
+      if (st.dirty && S.admin !== false) {
+        S.fptn.busy = true;
+        T.core.invoke('fptn_repair').then(function (d) { applyF(d.info); S.fptn.repairMsg = d.message; addLog({ svc: 'FPTN', m: 'Бунт восстановил сеть после сбоя. ' + d.message, ok: true }); toast('Сеть после FPTN восстановлена'); })
+          .catch(function () {}).then(function () { S.fptn.busy = false; renderAll(); });
+      } else renderAll();
+    }).catch(function () {});
+  }
+  function renderFptn() {
+    var f = S.fptn, c = comp('fptn');
+    var set = function (id, v) { var e = $(id); if (e) e.textContent = v; };
+    set('#fVer', c.cur || '–');
+    set('#fToken', f.tokenSet ? 'Токен задан: ' + f.hint : 'Токен не добавлен.');
+    var a = f.adapter || {};
+    set('#fAdState', !inTauri ? 'Нет данных' : a.exists ? (FST[a.status] || a.status || '–') : 'Нет (создаётся при подключении)');
+    set('#fAdDesc', a.exists ? (a.description || '–') : '–');
+    var dis = function (id, v) { var e = $(id); if (e) e.disabled = v; };
+    dis('#fAdOn', !a.exists || a.status === 'Up' || f.busy);
+    dis('#fAdOff', !a.exists || a.status === 'Disabled' || f.busy);
+    dis('#fAdDel', !a.exists || S.on.fptn || f.busy);
+    var d = $('#fDirty'); if (d) d.hidden = !f.dirty;
+    var rm = $('#fRepairMsg'); if (rm) { rm.hidden = !f.repairMsg; rm.textContent = f.repairMsg; }
+    var lg = $('#fLog'); if (lg) { lg.hidden = !f.logOpen; lg.textContent = f.log || ''; }
+    var sw = document.querySelector('.head-sw [data-svc="fptn"]'); if (sw) sw.disabled = f.busy;
+    var st = document.querySelector('[data-state="fptn"]');
+    if (st && f.busy) { st.className = 'state'; st.innerHTML = '<span class="spin"></span>Подождите…'; }
+  }
   function restartDiscord() {
     if (!inTauri || !S.on.discord) return;
     realDiscord(true, false);
@@ -746,7 +899,7 @@
     });
   }
   /* настоящие компоненты внутри Tauri: пока только запрет для Discord и YouTube */
-  var REAL = { discord: true, telegram: true };
+  var REAL = { discord: true, telegram: true, fptn: true };
   function refreshLatest(id) {
     return T.core.invoke('latest_component', { id: id }).then(function (l) {
       var c = comp(id);
@@ -764,6 +917,7 @@
     T.core.invoke('install_component', { id: id }).then(function (v) {
       c.cur = v; c.latest = v; c.next = null; c.busy = null; c.stage = null;
       if (id === 'telegram') T.core.invoke('telegram_status').then(function (st) { applyTg(st); renderAll(); }).catch(function () {});
+      if (id === 'fptn') T.core.invoke('fptn_status').then(function (st) { applyF(st); renderAll(); }).catch(function () {});
       addLog({ svc: c.name, m: 'Установлено: ' + v + '. Хеш проверен.', ok: true });
       toast(c.name + ' установлен');
       renderAll();
@@ -778,7 +932,7 @@
   function reinstallAsk(id) {
     var c = comp(id);
     openModal('Переустановить: ' + c.name,
-      '<p>Файлы будут скачаны с GitHub заново (последняя версия) и заменят установленные. Если запрет был включён, он перезапустится.</p><p class="note">' + (id === 'telegram' ? 'Порт и ссылка для Telegram останутся прежними.' : 'Ваши списки доменов и IP сохранятся.') + '</p>',
+      '<p>Файлы будут скачаны с GitHub заново (последняя версия) и заменят установленные. Если запрет был включён, он перезапустится.</p><p class="note">' + (id === 'telegram' ? 'Порт и ссылка для Telegram останутся прежними.' : id === 'fptn' ? 'Токен и настройки FPTN сохранятся. Если VPN был включён, он подключится заново.' : 'Ваши списки доменов и IP сохранятся.') + '</p>',
       '<button class="btn" data-act="closeModal">Отмена</button><button class="btn primary" data-act="reinstallDo" data-arg="' + id + '">Переустановить</button>');
   }
   function reinstallDo(id) {
@@ -794,7 +948,7 @@
       addLog({ svc: c.name, m: 'Переустановлено: ' + v + '. Хеш проверен.', ok: true });
       toast(c.name + ': переустановлено');
       renderAll();
-      if (was) { if (id === 'telegram') realTelegram(true, true); else realDiscord(true, true); }
+      if (was) { if (id === 'telegram') realTelegram(true, true); else if (id === 'fptn') realFptn(true, true); else realDiscord(true, true); }
     }).catch(function (err) {
       c.busy = null; c.stage = null;
       addLog({ svc: c.name, m: 'Ошибка переустановки: ' + err });
@@ -805,7 +959,7 @@
   function uninstallAsk(id) {
     var c = comp(id);
     openModal('Удалить: ' + c.name,
-      '<p>Запрет будет остановлен, а все файлы компонента удалены из папки <span class="mono">modules</span>' + (id === 'telegram' ? ', в том числе настройки прокси (порт и секрет). Ссылку в Telegram придётся добавить заново.' : ', в том числе ваши списки доменов и IP.') + '</p><p class="note">Потом его можно установить заново кнопкой «Установить».</p>',
+      '<p>Запрет будет остановлен, а все файлы компонента удалены из папки <span class="mono">modules</span>' + (id === 'telegram' ? ', в том числе настройки прокси (порт и секрет). Ссылку в Telegram придётся добавить заново.' : id === 'fptn' ? ', в том числе токен и настройки FPTN. Перед удалением Бунт отключит VPN и вернёт сеть в исходное состояние. Токен придётся ввести заново.' : ', в том числе ваши списки доменов и IP.') + '</p><p class="note">Потом его можно установить заново кнопкой «Установить».</p>',
       '<button class="btn" data-act="closeModal">Отмена</button><button class="btn danger" data-act="uninstallDo" data-arg="' + id + '">Удалить</button>');
   }
   function uninstallDo(id) {
@@ -815,6 +969,7 @@
     T.core.invoke('uninstall_component', { id: id }).then(function () {
       c.cur = null; c.next = null; S.on[id] = false;
       if (id === 'telegram') S.telegram.link = '';
+      if (id === 'fptn') { S.fptn.tokenSet = false; S.fptn.hint = ''; S.fptn.adapter = { exists: false, status: '', description: '' }; S.fptn.dirty = false; }
       S.sec.items = [];
       addLog({ svc: c.name, m: 'Компонент удалён.' });
       toast(c.name + ' удалён');
@@ -975,6 +1130,8 @@
     toggleAll: toggleAll,
     checkUpdates: checkUpdates,
     autotest: autotest,
+    fSave: function () { fSave(); }, fSaveToken: fSaveToken, fClearToken: fClearToken, fReset: fReset, fRepair: fRepair, fLog: fLog,
+    fAdapter: function (a) { fAdapter(a); }, fTakeOver: function (a) { fTakeOver(a); },
     tgSave: tgSave, tgReset: tgReset, tgSecret: tgSecret,
     copyTg: function () { copyText($('#tgLink').value, 'Ссылка скопирована'); },
     addVless: addVless,
@@ -1093,6 +1250,17 @@
       renderAll();
       Object.keys(REAL).forEach(function (id) { refreshLatest(id).then(renderAll); });
       loadNotes();
+      if (comp('fptn').cur) {
+        T.core.invoke('fptn_status').then(function (st) {
+          applyF(st);
+          renderAll();
+          if (st.dirty) adminReady.then(function () { if (S.admin !== false) watchFptn(); });
+          else if (st.running) addLog({ svc: 'FPTN', m: 'FPTN уже работал. Бунт подхватил его.', ok: true });
+          else if ((st.enabled || (st.config && st.config.autostart)) && st.token_set) adminReady.then(function () { realFptn(true, true); });
+          else adminReady.then(function () { if (S.admin !== false) T.core.invoke('fptn_foreign').then(function (x) { if (x.procs.length) askFptnTakeOver(x); }).catch(function () {}); });
+        }).catch(function () {});
+        setInterval(watchFptn, 15000);
+      }
       if (comp('telegram').cur) {
         T.core.invoke('telegram_status').then(function (st) {
           applyTg(st);

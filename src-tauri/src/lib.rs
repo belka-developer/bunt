@@ -7,6 +7,7 @@
 mod integrity;
 mod modules;
 mod settings;
+mod fptn;
 mod telegram;
 mod zapret;
 
@@ -127,7 +128,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let telegram = MenuItem::with_id(app, "go:telegram", "Запрет Telegram", true, None::<&str>)?;
     let vless = MenuItem::with_id(app, "go:vless", "VLESS · скоро", false, None::<&str>)?;
     let dns = MenuItem::with_id(app, "go:dns", "DNS · скоро", false, None::<&str>)?;
-    let fptn = MenuItem::with_id(app, "go:fptn", "FPTN · скоро", false, None::<&str>)?;
+    let fptn = MenuItem::with_id(app, "go:fptn", "FPTN", true, None::<&str>)?;
     let wg = MenuItem::with_id(app, "go:wg", "WireGuard · скоро", false, None::<&str>)?;
     let updates = MenuItem::with_id(app, "go:updates", "Обновления", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "go:settings", "Настройки", true, None::<&str>)?;
@@ -234,7 +235,18 @@ pub fn run() {
             telegram::telegram_config_reset,
             telegram::telegram_set_autostart,
             telegram::telegram_foreign,
-            telegram::telegram_take_over
+            telegram::telegram_take_over,
+            fptn::fptn_status,
+            fptn::fptn_connect,
+            fptn::fptn_disconnect,
+            fptn::fptn_repair,
+            fptn::fptn_config_set,
+            fptn::fptn_config_reset,
+            fptn::fptn_clear_token,
+            fptn::fptn_adapter,
+            fptn::fptn_log,
+            fptn::fptn_foreign,
+            fptn::fptn_take_over
         ])
         .on_window_event(|window, event| {
             if window.label() != "main" {
@@ -271,6 +283,7 @@ pub fn run() {
             if let tauri::RunEvent::Exit = event {
                 app.state::<zapret::Zapret>().stop();
                 telegram::stop();
+                fptn::shutdown();
             }
         });
 }

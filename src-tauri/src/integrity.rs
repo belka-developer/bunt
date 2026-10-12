@@ -17,7 +17,7 @@ const MANIFEST: &str = ".bunt-manifest.json";
 /// Файлы, которые меняются при обычной работе, в хеши не входят.
 fn skipped(rel: &str) -> bool {
     let r = rel.replace('\\', "/").to_lowercase();
-    r == MANIFEST || r.contains("__pycache__/") || r.ends_with(".pyc") || r == "winws.log" || r == "lists/ipset-all.txt" || r.ends_with("-user.txt")
+    r == MANIFEST || r.starts_with("logs/") || r.contains("__pycache__/") || r.ends_with(".pyc") || r == "winws.log" || r == "lists/ipset-all.txt" || r.ends_with("-user.txt")
 }
 
 fn hash_file(path: &Path) -> Result<String, String> {
@@ -189,6 +189,16 @@ fn run_check() -> Vec<Item> {
         out.extend(check_files(label, &dir));
         if let Some(py) = crate::telegram::runtime_python() {
             if let Some(i) = check_signature("Встроенный Python", "python.exe", &py) {
+                out.push(i);
+            }
+        }
+    }
+    if let Ok(dir) = crate::modules::active_dir("fptn") {
+        any = true;
+        let label = "FPTN";
+        out.extend(check_files(label, &dir));
+        for (file, rel) in [("fptn-client-cli.exe", "fptn-client-cli.exe"), ("wintun.dll", "wintun.dll")] {
+            if let Some(i) = check_signature(label, file, &dir.join(rel)) {
                 out.push(i);
             }
         }
