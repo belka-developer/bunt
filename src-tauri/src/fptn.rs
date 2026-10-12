@@ -311,7 +311,7 @@ fn base64(data: &[u8]) -> String {
 }
 
 /// Запускает скрипт PowerShell скрыто. Скрипт передаётся закодированным: никаких проблем с кавычками.
-fn ps(script: &str) -> Option<String> {
+pub(crate) fn ps(script: &str) -> Option<String> {
     #[cfg(windows)]
     {
         let full = format!("[Console]::OutputEncoding=[Text.Encoding]::UTF8; $ProgressPreference='SilentlyContinue'; {script}");
@@ -332,23 +332,23 @@ fn ps(script: &str) -> Option<String> {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub(crate) struct AdapterDns {
-    alias: String,
-    index: u32,
+    pub(crate) alias: String,
+    pub(crate) index: u32,
     /// Статические DNS из реестра, пусто: адреса приходят по DHCP
-    ns: String,
+    pub(crate) ns: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub(crate) struct Probe {
-    gateway: String,
-    alias: String,
-    index: u32,
-    adapters: Vec<AdapterDns>,
+    pub(crate) gateway: String,
+    pub(crate) alias: String,
+    pub(crate) index: u32,
+    pub(crate) adapters: Vec<AdapterDns>,
 }
 
 /// Находит основной шлюз среди физических адаптеров (Ethernet, Wi-Fi): виртуальные Radmin, Hamachi, VPN,
 /// Hyper-V и Wintun в выбор не попадают. Заодно запоминает статические DNS этих адаптеров.
-fn probe() -> Result<Probe, String> {
+pub(crate) fn probe() -> Result<Probe, String> {
     let script = r#"
 $ErrorActionPreference='SilentlyContinue'
 $phys=@(Get-NetAdapter -Physical | Where-Object { $_.Status -eq 'Up' })
@@ -390,7 +390,7 @@ fn safe_ns(s: &str) -> bool {
 }
 
 /// Сценарий очистки: маршруты FPTN, DNS, адаптер, кэш DNS. Все значения проверены заранее.
-fn repair_script(tun_ip: &str, tun_name: &str, gateway: &str, adapters: &[AdapterDns], remove_adapter: bool) -> String {
+pub(crate) fn repair_script(tun_ip: &str, tun_name: &str, gateway: &str, adapters: &[AdapterDns], remove_adapter: bool) -> String {
     let mut s = String::from("$ErrorActionPreference='SilentlyContinue'\n");
     s += &format!("Get-NetRoute | Where-Object {{ $_.NextHop -eq '{tun_ip}' }} | Remove-NetRoute -Confirm:$false\n");
     s += &format!("Get-NetRoute -InterfaceAlias '{tun_name}' | Remove-NetRoute -Confirm:$false\n");
@@ -548,7 +548,7 @@ fn repair(remove_adapter: bool) -> Result<String, String> {
     })
 }
 
-fn require_admin() -> Result<(), String> {
+pub(crate) fn require_admin() -> Result<(), String> {
     if crate::settings::is_admin_sync() { Ok(()) } else { Err("Нужны права администратора: виртуальный адаптер и маршруты меняются только с ними.".into()) }
 }
 

@@ -11,11 +11,11 @@
     telegram: { name: 'Zapret (Telegram)', icon: 'plane', cls: 'b-telegram' },
     fptn: { name: 'FPTN', icon: 'tunnel', cls: 'b-fptn' },
     vless: { name: 'VLESS', icon: 'net', cls: 'b-vless' },
-    wg: { name: 'WireGuard', icon: 'vpn', cls: 'b-wg' }
+    wg: { name: 'WireGuard / AmneziaWG', icon: 'vpn', cls: 'b-wg' }
   };
   var IDS = Object.keys(SVC);
   /* разделы-заглушки: чтобы вернуть раздел, уберите его из SOON и удалите data-soon у секции */
-  var SOON = { vless: true, wg: true };
+  var SOON = { vless: true };
   /* внутри Tauri доступны настоящие команды, в обычном браузере остаётся макет */
   var T = window.__TAURI__;
   var inTauri = !!(T && T.core && T.core.invoke);
@@ -42,6 +42,7 @@
     telegram: { port: '1443', link: '' },
     fc: { token_in: '', bypass_method: 'sni-spoofing-yandex-26-4', strategy: 'rolling-tunnel', sni: 'google.com', mtu: '1420', preferred_server: '', tun_name: 'FPTN', tun_ip: '10.0.0.1', exclude_networks: '10.0.0.0/8,192.168.0.0/16', include_networks: '', split: false, split_mode: 'exclude', split_domains: '', adblock: true, blacklist: '', auto_gateway: true, remove_adapter: true, autostart: false },
     fptn: { tokenSet: false, hint: '', servers: [], tokenError: '', adapter: { exists: false, status: '', description: '' }, dirty: false, busy: false, repairMsg: '', logOpen: false, log: '' },
+    w: { profiles: [], config: { active: '', autoconnect: false, keep_on_exit: false, split_default: true }, running: false, tunnel: '', dirty: false, adapter: { exists: false, status: '', description: '' }, stats: { handshake_ago: null, rx: 0, tx: 0 }, busy: false, repairMsg: '', logOpen: false, log: '', paste: false, imp_name: 'wg0', imp_text: '', view: '', viewName: '' },
     tgc: { autostart: false, host: '127.0.0.1', port: '1443', secret: '', dc_ip: '2:149.154.167.220\n4:149.154.167.220', verbose: false, buf_kb: '256', pool_size: '4', log_max_mb: '5', cfproxy: true, h2: true, cf_domain_on: false, cf_domain: '', cf_worker_on: false, cf_worker: '', force_test_dc: false, no_secure: false, fake_tls_domain: '' },
     lists: {
       general: { file: 'list-general-user.txt', title: 'Свои домены', hint: 'Домены для обхода, по одному на строку. Поддомены учитываются автоматически.', text: '# по одному домену на строку\nexample.org\ncdn.example.org\n' },
@@ -55,7 +56,7 @@
         { id: 2, name: 'Хельсинки · TLS', host: 'hel2.example.net', ping: 61 },
         { id: 3, name: 'Стамбул · WebSocket', host: 'ist1.example.net', ping: 92 }
       ],
-      wg: [{ id: 11, name: 'wg-home', host: '203.0.113.10:51820', ping: null }]
+      wg: []
     },
     sel: { vless: null, wg: null },
     nextId: 100,
@@ -73,7 +74,7 @@
       { id: 'telegram', name: 'Zapret (Telegram)', cur: null, latest: '1.2.4', next: null, cls: 'b-telegram', icon: 'plane', size: '3.1 МБ', src: 'Flowseal/tg-ws-proxy (GitHub)', sha: '7be04a19c3d8…12ff', notes: [], busy: null },
       { id: 'fptn', name: 'FPTN', cur: null, latest: '0.4.6', next: null, cls: 'b-fptn', icon: 'tunnel', size: '58.5 МБ', src: 'fptn-project/fptn (GitHub)', sha: '–', notes: [], busy: null },
       { id: 'vless', name: 'VLESS', cur: '2.0.1', next: null, cls: 'b-vless', icon: 'net', size: '21.7 МБ', src: 'GitHub Releases', sha: 'c20d5e71b8a4…03aa', notes: [], busy: null },
-      { id: 'wg', name: 'WireGuard', cur: '0.5.3', next: null, cls: 'b-wg', icon: 'vpn', size: '4.6 МБ', src: 'GitHub Releases', sha: '5d1f9a3e07c2…8b11', notes: [], busy: null }
+      { id: 'wg', name: 'WireGuard / AmneziaWG', cur: null, latest: '3.1.0', next: null, cls: 'b-wg', icon: 'vpn', size: '3.5 МБ', src: 'amnezia-vpn/amneziawg-windows-client (GitHub)', sha: '–', notes: [], busy: null }
     ],
     lastCheck: 'сегодня, 14:45',
     targets: [
@@ -124,7 +125,7 @@
       discord: function () { return [['Метод', 'winws'], ['Режим', S.discord.mode === 'auto' ? 'Авто' : 'Вручную']]; },
       telegram: function () { return [['Метод', 'MTProto-прокси'], ['Порт', String(S.telegram.port)]]; },
       vless: function () { return [['Сервер', selName('vless') || 'Не выбран'], ['Профиль', S.sel.vless ? 'Основной' : 'Нет']]; },
-      wg: function () { return [['Профиль', selName('wg') || 'Не выбран'], ['Интерфейс', S.sel.wg ? 'wg0' : '–']]; }
+      wg: function () { var a = S.w.config.active, p = S.w.profiles.filter(function (x) { return x.name === a; })[0]; return [['Профиль', a || 'Не выбран'], ['Тип', p ? (p.awg ? 'AmneziaWG' : 'WireGuard') : '–']]; }
     };
     var host = $('#cards');
     if (!host) return;
@@ -151,7 +152,7 @@
   }
 
   function renderInstall() {
-    ['discord', 'telegram', 'fptn'].forEach(function (id) {
+    ['discord', 'telegram', 'fptn', 'wg'].forEach(function (id) {
       var c = comp(id), ok = installed(id), box = $('#inst-' + id), body = document.querySelector('[data-body="' + id + '"]');
       if (!box || !body) return;
       box.hidden = ok; body.hidden = !ok;
@@ -159,7 +160,7 @@
       if (sw) sw.parentNode.hidden = !ok;
       document.querySelector('[data-latest="' + id + '"]').textContent = c.latest || '…';
       $('#instAct-' + id).innerHTML = c.busy != null
-        ? '<span class="bar-track"><span class="bar-fill" style="width:' + c.busy + '%"></span></span><div class="note mt-s">' + (id === 'telegram' || id === 'fptn' ? esc(c.stage || 'Готовим установку') + '… ' + c.busy + '%. Это займёт около минуты.' : 'Скачиваем и проверяем файлы… ' + c.busy + '%') + '</div>'
+        ? '<span class="bar-track"><span class="bar-fill" style="width:' + c.busy + '%"></span></span><div class="note mt-s">' + (id === 'telegram' || id === 'fptn' || id === 'wg' ? esc(c.stage || 'Готовим установку') + '… ' + c.busy + '%. Это займёт около минуты.' : 'Скачиваем и проверяем файлы… ' + c.busy + '%') + '</div>'
         : '<button class="btn primary" data-act="installComp" data-arg="' + id + '">' + ico('plus') + 'Установить</button>';
     });
   }
@@ -172,7 +173,7 @@
       ['plane', 'Запрет Telegram' + (installed('telegram') ? (S.on.telegram ? ' · включён' : ' · выключен') : ''), 'telegram'],
       ['tunnel', 'FPTN' + (installed('fptn') ? (S.on.fptn ? ' · подключён' : ' · отключён') : ''), 'fptn'],
       ['net', 'VLESS · скоро', null],
-      ['vpn', 'WireGuard · скоро', null],
+      ['vpn', 'WireGuard / AmneziaWG' + (installed('wg') ? (S.on.wg ? ' · подключён' : ' · отключён') : ''), 'wg'],
       ['globe', 'DNS · скоро', null],
       null,
       ['download', 'Обновления', 'updates'],
@@ -238,7 +239,7 @@
   function renderProfiles(t) {
     var host = $('#list-' + t), arr = S.prof[t];
     if (!arr.length) {
-      host.innerHTML = '<div class="empty"><span>Профилей пока нет.</span>' + (t === 'wg' ? '<button class="btn" data-act="pickWg">' + ico('plus') + 'Импортировать .conf</button>' : '') + '</div>';
+      host.innerHTML = '<div class="empty"><span>Профилей пока нет.</span></div>';
       return;
     }
     host.innerHTML = arr.map(function (p) {
@@ -279,7 +280,7 @@
   }
   function loadNotes() {
     if (!inTauri) return;
-    ['app', 'discord', 'telegram', 'fptn'].forEach(function (id) {
+    ['app', 'discord', 'telegram', 'fptn', 'wg'].forEach(function (id) {
       var c = comp(id);
       if (!c || (id !== 'app' && !c.cur)) return;
       T.core.invoke('release_notes', { id: id }).then(function (n) {
@@ -374,7 +375,7 @@
     $('#btnSec').disabled = run;
     var bo = $('#btnSecOnline'); if (bo) bo.disabled = run;
     var fix = $('#secFix');
-    if (fix) fix.innerHTML = (bad && !run && inTauri) ? ['discord', 'telegram', 'fptn'].filter(installed).map(function (id) {
+    if (fix) fix.innerHTML = (bad && !run && inTauri) ? ['discord', 'telegram', 'fptn', 'wg'].filter(installed).map(function (id) {
       return '<div class="sec-fix"><span>Файлы компонента «' + esc(comp(id).name) + '» отличаются от оригинала. Лучше всего переустановить его.</span><button class="btn sm primary" data-act="reinstallAsk" data-arg="' + id + '">Переустановить</button></div>';
     }).join('') : '';
     var RES = { ok: 'OK', warn: 'Внимание', bad: 'Нарушено', info: 'Заметка', run: 'Проверяю…', idle: 'Ожидает' };
@@ -398,7 +399,7 @@
 
   function renderAll() {
     renderSide(); renderCards(); renderTray(); renderHeads(); renderLog();
-    renderInstall(); renderDiscord(); renderTelegram(); renderFptn(); renderProfiles('vless'); renderProfiles('wg');
+    renderInstall(); renderDiscord(); renderTelegram(); renderFptn(); renderWg(); renderProfiles('vless');
     renderVersions(); renderNotes(); renderSecurity(); renderAdmin(); sync(); syncTray();
   }
 
@@ -418,13 +419,14 @@
       if (!quiet) { toast('Сначала установите компонент.', 'warn'); go(id); }
       return false;
     }
-    if (on && (id === 'vless' || id === 'wg') && !S.sel[id]) {
-      if (!quiet) { toast(id === 'vless' ? 'Сначала выберите сервер VLESS.' : 'Сначала импортируйте или выберите профиль WireGuard.', 'warn'); go(id); }
+    if (on && id === 'vless' && !S.sel[id]) {
+      if (!quiet) { toast('Сначала выберите сервер VLESS.', 'warn'); go(id); }
       return false;
     }
     if (inTauri && id === 'discord') { realDiscord(on, quiet); return true; }
     if (inTauri && id === 'telegram') { realTelegram(on, quiet); return true; }
     if (inTauri && id === 'fptn') { realFptn(on, quiet); return true; }
+    if (inTauri && id === 'wg') { realWg(on, quiet); return true; }
     S.on[id] = on;
     var n = SVC[id].name;
     if (on) {
@@ -774,6 +776,166 @@
     var st = document.querySelector('[data-state="fptn"]');
     if (st && f.busy) { st.className = 'state'; st.innerHTML = '<span class="spin"></span>Подождите…'; }
   }
+  /* WireGuard и AmneziaWG: профили .conf, туннель службой клиента AmneziaWG, нужны права администратора */
+  var WST = { Up: 'Включён', Disabled: 'Отключён', Disconnected: 'Не подключён', NotPresent: 'Отсутствует' };
+  function applyW(st) {
+    var w = S.w;
+    w.profiles = st.profiles || [];
+    w.config = st.config || w.config;
+    w.running = !!st.running; w.tunnel = st.tunnel || '';
+    w.dirty = !!st.dirty;
+    w.adapter = st.adapter || w.adapter;
+    w.stats = st.stats || w.stats;
+    S.on.wg = w.running;
+    if (w.view && !w.profiles.some(function (p) { return p.name === w.viewName; })) w.view = '';
+  }
+  function wErr(err) { toast(String(err).slice(0, 240), 'warn'); }
+  var fmtBytes = function (n) { return n < 1024 ? n + ' Б' : n < 1048576 ? (n / 1024).toFixed(1) + ' КБ' : n < 1073741824 ? (n / 1048576).toFixed(1) + ' МБ' : (n / 1073741824).toFixed(2) + ' ГБ'; };
+  var fmtAgo = function (s) { return s == null ? 'Пока не было' : s < 5 ? 'только что' : s < 120 ? s + ' с назад' : s < 7200 ? Math.round(s / 60) + ' мин назад' : Math.round(s / 3600) + ' ч назад'; };
+  function wSaveConfig() {
+    if (!inTauri || !installed('wg')) return;
+    T.core.invoke('wg_config_set', { config: S.w.config }).then(function (st) { applyW(st); toast('Настройки сохранены'); }).catch(wErr).then(renderAll);
+  }
+  function wImport(name, text, replace) {
+    if (!inTauri) { toast('Импорт работает только в приложении.', 'warn'); return; }
+    if (!installed('wg')) { toast('Сначала установите компонент.', 'warn'); return; }
+    T.core.invoke('wg_import', { name: name, text: text, replace: !!replace }).then(function (st) {
+      applyW(st);
+      S.w.paste = false; S.w.imp_text = '';
+      var n = name.replace(/\.conf$/i, '');
+      addLog({ svc: SVC.wg.name, m: 'Профиль добавлен: ' + n + '.', ok: true });
+      toast('Профиль добавлен');
+    }).catch(function (err) {
+      var m = String(err);
+      if (m.indexOf('EXISTS:') === 0) {
+        S.w.pending = { name: name, text: text };
+        openModal('Профиль уже есть', '<p>' + esc(m.replace('EXISTS: ', '')) + ' Заменить его новым конфигом?</p>',
+          '<button class="btn" data-act="closeModal">Отмена</button><button class="btn primary" data-act="wReplace">Заменить</button>');
+      } else wErr(m);
+    }).then(renderAll);
+  }
+  function wReplace() {
+    closeModal();
+    var p = S.w.pending; S.w.pending = null;
+    if (p) wImport(p.name, p.text, true);
+  }
+  function wImportText() {
+    var n = (S.w.imp_name || '').trim(), t = S.w.imp_text || '';
+    if (!n) { toast('Укажите имя профиля.', 'warn'); return; }
+    if (!t.trim()) { toast('Вставьте текст конфига.', 'warn'); return; }
+    wImport(n, t, false);
+  }
+  function wPick(name) {
+    if (!inTauri) return;
+    if (S.w.running && S.w.tunnel !== name) { toast('Сначала отключите туннель, потом выбирайте другой профиль.', 'warn'); return; }
+    T.core.invoke('wg_select', { name: name }).then(applyW).catch(wErr).then(renderAll);
+  }
+  function wView(name) {
+    var w = S.w;
+    if (w.view && w.viewName === name) { w.view = ''; renderAll(); return; }
+    T.core.invoke('wg_profile_view', { name: name }).then(function (t) { w.view = t; w.viewName = name; renderAll(); }).catch(wErr);
+  }
+  function wDelAsk(name) {
+    openModal('Удалить профиль «' + esc(name) + '»',
+      '<p>Конфиг и ключи профиля будут удалены с этого компьютера.</p><p class="note">Если нужен запасной экземпляр, сохраните свой .conf заранее: из Бунта ключи не выгружаются.</p>',
+      '<button class="btn" data-act="closeModal">Отмена</button><button class="btn danger" data-act="wDelDo" data-arg="' + esc(name) + '">Удалить</button>');
+  }
+  function wDelDo(name) {
+    closeModal();
+    T.core.invoke('wg_delete', { name: name }).then(function (st) { applyW(st); addLog({ svc: SVC.wg.name, m: 'Профиль удалён: ' + name + '.' }); }).catch(wErr).then(renderAll);
+  }
+  function wRepair() {
+    if (!inTauri || !installed('wg') || adminNeeded()) return;
+    addLog({ svc: SVC.wg.name, m: 'Восстанавливаем сеть…' });
+    T.core.invoke('wg_repair').then(function (d) {
+      applyW(d.info); S.w.repairMsg = d.message;
+      addLog({ svc: SVC.wg.name, m: d.message, ok: true });
+      toast(d.message);
+    }).catch(function (err) { S.w.repairMsg = String(err); wErr(err); }).then(renderAll);
+  }
+  function wAdapter(action) {
+    if (!inTauri || !installed('wg') || adminNeeded()) return;
+    if (action === 'disable' && S.w.running && !window.confirm('Туннель включён: отключение адаптера оборвёт соединение. Продолжить?')) return;
+    T.core.invoke('wg_adapter', { action: action }).then(function (st) {
+      applyW(st);
+      toast({ enable: 'Адаптер включён', disable: 'Адаптер отключён', remove: 'Адаптер удалён' }[action]);
+    }).catch(wErr).then(renderAll);
+  }
+  function wLog() {
+    var w = S.w;
+    w.logOpen = !w.logOpen;
+    if (w.logOpen && inTauri) T.core.invoke('wg_log').then(function (t) { w.log = t || 'Журнал пуст.'; renderAll(); }).catch(function () {});
+    renderAll();
+  }
+  function realWg(on, quiet) {
+    var w = S.w;
+    if (w.busy) return;
+    if (on && adminNeeded(quiet)) return;
+    if (on && !w.config.active) { if (!quiet) { toast('Сначала импортируйте профиль и выберите его.', 'warn'); go('wg'); } return; }
+    w.busy = true;
+    addLog({ svc: SVC.wg.name, m: on ? 'Подключаем «' + w.config.active + '»…' : 'Отключаем туннель и убираем следы в сети…' });
+    renderAll();
+    var p = on
+      ? T.core.invoke('wg_connect', { name: w.config.active }).then(function (st) { applyW(st); addLog({ m: 'Туннель «' + st.tunnel + '» поднят.', ok: true }); })
+      : T.core.invoke('wg_disconnect').then(function (d) { applyW(d.info); w.repairMsg = d.message; addLog({ m: d.message, ok: true }); });
+    p.catch(function (err) {
+      S.on.wg = false;
+      addLog({ svc: SVC.wg.name, m: 'Ошибка: ' + err });
+      if (!quiet || on) toast(String(err).slice(0, 240), 'warn');
+      T.core.invoke('wg_status').then(function (st) { applyW(st); renderAll(); }).catch(function () {});
+    }).then(function () { w.busy = false; if (w.logOpen) T.core.invoke('wg_log').then(function (t) { w.log = t; renderAll(); }).catch(function () {}); renderAll(); });
+  }
+  /* туннель мог упасть сам или Бунт закрылся аварийно: проверяем следы и чиним */
+  function watchWg() {
+    if (!inTauri || !installed('wg') || S.w.busy) return;
+    T.core.invoke('wg_status').then(function (st) {
+      var was = S.w.running;
+      applyW(st);
+      if (was && !st.running) addLog({ svc: SVC.wg.name, m: 'Туннель остановился.' });
+      if (st.dirty && S.admin !== false) {
+        S.w.busy = true;
+        T.core.invoke('wg_repair').then(function (d) { applyW(d.info); S.w.repairMsg = d.message; addLog({ svc: SVC.wg.name, m: 'Бунт восстановил сеть после сбоя. ' + d.message, ok: true }); toast('Сеть после туннеля восстановлена'); })
+          .catch(function () {}).then(function () { S.w.busy = false; renderAll(); });
+      } else renderAll();
+    }).catch(function () {});
+  }
+  function renderWg() {
+    var w = S.w, c = comp('wg');
+    var set = function (id, v) { var e = $(id); if (e) e.textContent = v; };
+    var dis = function (id, v) { var e = $(id); if (e) e.disabled = v; };
+    set('#wVer', c.cur || '–');
+    var host = $('#list-wg');
+    if (host) {
+      if (!w.profiles.length) host.innerHTML = '<div class="empty"><span>Профилей пока нет.</span><button class="btn" data-act="pickWg">' + ico('plus') + 'Импортировать .conf</button></div>';
+      else host.innerHTML = w.profiles.map(function (p) {
+        var sel = w.config.active === p.name, live = w.running && w.tunnel === p.name;
+        var sub = (p.awg ? 'AmneziaWG' : 'WireGuard') + ' · ' + (p.endpoint || 'Endpoint не указан') + (p.full_tunnel ? ' · весь трафик' : '');
+        return '<div class="prof ' + (sel ? 'sel' : '') + '"><button class="pick" data-act="wPick" data-arg="' + esc(p.name) + '" aria-pressed="' + sel + '"><span class="radio"></span><span class="pn"><b>' + esc(p.name) + '</b><small>' + esc(sub) + '</small></span></button>' +
+          (live ? '<span class="tag ok">включён</span>' : '') +
+          '<button class="btn sm ghost" data-act="wView" data-arg="' + esc(p.name) + '">Конфиг</button>' +
+          '<button class="btn sm ghost" data-act="wDel" data-arg="' + esc(p.name) + '" aria-label="Удалить ' + esc(p.name) + '"' + (live ? ' disabled' : '') + '>' + ico('x') + '</button></div>';
+      }).join('');
+    }
+    var v = $('#wView'); if (v) { v.hidden = !w.view; v.textContent = w.view ? '# ' + w.viewName + ' (ключи скрыты)\n' + w.view : ''; }
+    var a = w.adapter || {};
+    set('#wAdState', !inTauri ? 'Нет данных' : a.exists ? (WST[a.status] || a.status || '–') : 'Нет (создаётся при подключении)');
+    set('#wAdDesc', a.exists ? (a.description || '–') : '–');
+    dis('#wAdOn', !a.exists || a.status === 'Up' || w.busy);
+    dis('#wAdOff', !a.exists || a.status === 'Disabled' || w.busy);
+    dis('#wAdDel', !a.exists || w.running || w.busy);
+    var sb = $('#wStatsBox'); if (sb) sb.hidden = !w.running;
+    if (w.running) {
+      var st = w.stats || {};
+      set('#wTun', w.tunnel); set('#wHs', fmtAgo(st.handshake_ago)); set('#wRx', fmtBytes(st.rx || 0)); set('#wTx', fmtBytes(st.tx || 0));
+    }
+    var d = $('#wDirty'); if (d) d.hidden = !w.dirty;
+    var rm = $('#wRepairMsg'); if (rm) { rm.hidden = !w.repairMsg; rm.textContent = w.repairMsg; }
+    var lg = $('#wLog'); if (lg) { lg.hidden = !w.logOpen; lg.textContent = w.log || ''; }
+    var pb = $('#wPasteBox'); if (pb) pb.hidden = !w.paste;
+    var sw = document.querySelector('.head-sw [data-svc="wg"]'); if (sw) sw.disabled = w.busy;
+    var stt = document.querySelector('[data-state="wg"]');
+    if (stt && w.busy) { stt.className = 'state'; stt.innerHTML = '<span class="spin"></span>Подождите…'; }
+  }
   function restartDiscord() {
     if (!inTauri || !S.on.discord) return;
     realDiscord(true, false);
@@ -923,7 +1085,7 @@
     });
   }
   /* настоящие компоненты внутри Tauri: пока только запрет для Discord и YouTube */
-  var REAL = { discord: true, telegram: true, fptn: true };
+  var REAL = { discord: true, telegram: true, fptn: true, wg: true };
   function refreshLatest(id) {
     return T.core.invoke('latest_component', { id: id }).then(function (l) {
       var c = comp(id);
@@ -942,6 +1104,7 @@
       c.cur = v; c.latest = v; c.next = null; c.busy = null; c.stage = null;
       if (id === 'telegram') T.core.invoke('telegram_status').then(function (st) { applyTg(st); renderAll(); }).catch(function () {});
       if (id === 'fptn') T.core.invoke('fptn_status').then(function (st) { applyF(st); renderAll(); }).catch(function () {});
+      if (id === 'wg') T.core.invoke('wg_status').then(function (st) { applyW(st); renderAll(); }).catch(function () {});
       addLog({ svc: c.name, m: 'Установлено: ' + v + '. Хеш проверен.', ok: true });
       toast(c.name + ' установлен');
       renderAll();
@@ -956,7 +1119,7 @@
   function reinstallAsk(id) {
     var c = comp(id);
     openModal('Переустановить: ' + c.name,
-      '<p>Файлы будут скачаны с GitHub заново (последняя версия) и заменят установленные. Если запрет был включён, он перезапустится.</p><p class="note">' + (id === 'telegram' ? 'Порт и ссылка для Telegram останутся прежними.' : id === 'fptn' ? 'Токен и настройки FPTN сохранятся. Если VPN был включён, он подключится заново.' : 'Ваши списки доменов и IP сохранятся.') + '</p>',
+      '<p>Файлы будут скачаны с GitHub заново (последняя версия) и заменят установленные. Если запрет был включён, он перезапустится.</p><p class="note">' + (id === 'telegram' ? 'Порт и ссылка для Telegram останутся прежними.' : id === 'fptn' ? 'Токен и настройки FPTN сохранятся. Если VPN был включён, он подключится заново.' : id === 'wg' ? 'Профили и ключи сохранятся. Если туннель был включён, Бунт отключит его на время установки и подключит заново.' : 'Ваши списки доменов и IP сохранятся.') + '</p>',
       '<button class="btn" data-act="closeModal">Отмена</button><button class="btn primary" data-act="reinstallDo" data-arg="' + id + '">Переустановить</button>');
   }
   function reinstallDo(id) {
@@ -972,7 +1135,7 @@
       addLog({ svc: c.name, m: 'Переустановлено: ' + v + '. Хеш проверен.', ok: true });
       toast(c.name + ': переустановлено');
       renderAll();
-      if (was) { if (id === 'telegram') realTelegram(true, true); else if (id === 'fptn') realFptn(true, true); else realDiscord(true, true); }
+      if (was) { if (id === 'telegram') realTelegram(true, true); else if (id === 'fptn') realFptn(true, true); else if (id === 'wg') realWg(true, true); else realDiscord(true, true); }
     }).catch(function (err) {
       c.busy = null; c.stage = null;
       addLog({ svc: c.name, m: 'Ошибка переустановки: ' + err });
@@ -983,7 +1146,7 @@
   function uninstallAsk(id) {
     var c = comp(id);
     openModal('Удалить: ' + c.name,
-      '<p>Запрет будет остановлен, а все файлы компонента удалены из папки <span class="mono">modules</span>' + (id === 'telegram' ? ', в том числе настройки прокси (порт и секрет). Ссылку в Telegram придётся добавить заново.' : id === 'fptn' ? ', в том числе токен и настройки FPTN. Перед удалением Бунт отключит VPN и вернёт сеть в исходное состояние. Токен придётся ввести заново.' : ', в том числе ваши списки доменов и IP.') + '</p><p class="note">Потом его можно установить заново кнопкой «Установить».</p>',
+      '<p>Запрет будет остановлен, а все файлы компонента удалены из папки <span class="mono">modules</span>' + (id === 'telegram' ? ', в том числе настройки прокси (порт и секрет). Ссылку в Telegram придётся добавить заново.' : id === 'fptn' ? ', в том числе токен и настройки FPTN. Перед удалением Бунт отключит VPN и вернёт сеть в исходное состояние. Токен придётся ввести заново.' : id === 'wg' ? ', в том числе все профили с ключами. Перед удалением Бунт отключит туннель и вернёт сеть в исходное состояние. Сохраните свои .conf: профили придётся импортировать заново.' : ', в том числе ваши списки доменов и IP.') + '</p><p class="note">Потом его можно установить заново кнопкой «Установить».</p>',
       '<button class="btn" data-act="closeModal">Отмена</button><button class="btn danger" data-act="uninstallDo" data-arg="' + id + '">Удалить</button>');
   }
   function uninstallDo(id) {
@@ -994,6 +1157,7 @@
       c.cur = null; c.next = null; S.on[id] = false;
       if (id === 'telegram') S.telegram.link = '';
       if (id === 'fptn') { S.fptn.tokenSet = false; S.fptn.hint = ''; S.fptn.adapter = { exists: false, status: '', description: '' }; S.fptn.dirty = false; }
+      if (id === 'wg') { S.w.profiles = []; S.w.config.active = ''; S.w.running = false; S.w.tunnel = ''; S.w.dirty = false; S.w.adapter = { exists: false, status: '', description: '' }; S.w.view = ''; }
       S.sec.items = [];
       addLog({ svc: c.name, m: 'Компонент удалён.' });
       toast(c.name + ' удалён');
@@ -1161,6 +1325,10 @@
     addVless: addVless,
     pingAll: function (a) { pingAll(a); },
     pickWg: function () { $('#wgFile').click(); },
+    wPaste: function () { S.w.paste = !S.w.paste; renderAll(); },
+    wImportText: wImportText, wRepair: wRepair, wLog: wLog,
+    wPick: function (a) { wPick(a); }, wDel: function (a) { wDelAsk(a); }, wDelDo: function (a) { wDelDo(a); }, wView: function (a) { wView(a); },
+    wAdapter: function (a) { wAdapter(a); }, wReplace: function (a) { wReplace(a); },
     updateOne: updateOne,
     installComp: installComp,
     elevate: elevate,
@@ -1195,6 +1363,7 @@
       set(d.sw, !get(d.sw));
       if (d.sw === 'discord.game') addLog({ svc: 'Zapret (Discord)', m: 'Game Filter: ' + (S.discord.game ? 'включён' : 'выключен') + '. Нужен перезапуск стратегии.' });
       if (d.sw === 'tgc.autostart') { tgAutostart(S.tgc.autostart); renderAll(); return; }
+      if (d.sw.indexOf('w.config.') === 0) { wSaveConfig(); renderAll(); return; }
       if (d.sw === 'discord.autoupd') toast(S.discord.autoupd ? 'Автопроверка включена' : 'Автопроверка выключена');
       renderDiscord();
       sync();
@@ -1240,12 +1409,9 @@
   $('#wgFile').addEventListener('change', function (e) {
     var f = e.target.files && e.target.files[0];
     if (!f) return;
+    if (f.size > 256 * 1024) { toast('Файл слишком большой для конфига WireGuard.', 'warn'); e.target.value = ''; return; }
     var r = new FileReader();
-    r.onload = function () {
-      var m = /Endpoint\s*=\s*(.+)/i.exec(String(r.result));
-      addProfile('wg', f.name.replace(/\.conf$/i, ''), m ? m[1].trim() : 'Endpoint не указан', null);
-      toast('Профиль добавлен: ' + f.name);
-    };
+    r.onload = function () { wImport(f.name.replace(/\.conf$/i, ''), String(r.result), false); };
     r.onerror = function () { toast('Не удалось прочитать файл.', 'warn'); };
     r.readAsText(f);
     e.target.value = '';
@@ -1284,6 +1450,17 @@
           else adminReady.then(function () { if (S.admin !== false) T.core.invoke('fptn_foreign').then(function (x) { if (x.procs.length) askFptnTakeOver(x); }).catch(function () {}); });
         }).catch(function () {});
         setInterval(watchFptn, 15000);
+      }
+      if (comp('wg').cur) {
+        T.core.invoke('wg_status').then(function (st) {
+          applyW(st);
+          renderAll();
+          if (st.dirty) adminReady.then(function () { if (S.admin !== false) watchWg(); });
+          else if (st.running) addLog({ svc: SVC.wg.name, m: 'Туннель уже работал. Бунт подхватил его.', ok: true });
+          else if (st.config && st.config.autoconnect && st.config.active) adminReady.then(function () { realWg(true, true); });
+        }).catch(function () {});
+        var wTick = 0;
+        setInterval(function () { wTick++; if (S.page === 'wg' || S.on.wg || wTick % 3 === 0) watchWg(); }, 5000);
       }
       if (comp('telegram').cur) {
         T.core.invoke('telegram_status').then(function (st) {

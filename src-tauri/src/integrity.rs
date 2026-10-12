@@ -203,6 +203,16 @@ fn run_check() -> Vec<Item> {
             }
         }
     }
+    if let Ok(dir) = crate::modules::active_dir("wg") {
+        any = true;
+        let label = "WireGuard / AmneziaWG";
+        out.extend(check_files(label, &dir));
+        for file in [crate::wg::EXE, crate::wg::TOOL] {
+            if let Some(i) = check_signature(label, file, &dir.join(file)) {
+                out.push(i);
+            }
+        }
+    }
     if !any {
         out.push(item("Компоненты", "info", Some("Нет установленных компонентов для проверки.".into())));
     }

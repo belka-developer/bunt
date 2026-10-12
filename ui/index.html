@@ -267,31 +267,81 @@
             </div>
           </section>
 
-          <!-- WireGuard -->
-          <section data-page="wg" data-soon hidden>
-            <div class="soon">
-              <span class="badge b-wg"><svg class="ic"><use href="#i-vpn"/></svg></span>
-              <span class="tag warn">Скоро</span>
-              <h1>WireGuard</h1>
-              <p class="sub">Здесь появится управление профилями WireGuard. Раздел в разработке.</p>
-            </div>
+          <!-- WireGuard и AmneziaWG -->
+          <section data-page="wg" hidden>
             <div class="page-head">
               <div>
-                <h1>WireGuard</h1>
-                <p class="sub">Профили из .conf файлов.</p>
+                <h1>WireGuard и AmneziaWG</h1>
+                <p class="sub">Профили из .conf, обычные и с обфускацией AmneziaWG. После отключения Бунт возвращает маршруты и DNS, сбрасывать сеть Windows не нужно.</p>
               </div>
               <div class="head-sw"><span class="state" data-state="wg"></span><button class="sw" role="switch" data-svc="wg" aria-label="WireGuard"></button></div>
             </div>
+            <div class="panel install" id="inst-wg" hidden>
+              <span class="badge b-wg" id="instBadge-wg"></span>
+              <h3>Не установлено</h3>
+              <p class="sub">Бунт скачает клиент AmneziaWG, проверит хеш и распакует его в папку <span class="mono">modules</span>, ничего не устанавливая в систему. Один клиент понимает и обычные конфиги WireGuard, и конфиги AmneziaWG. Нужны права администратора.</p>
+              <div class="inst-meta"><span>Источник: <b class="mono">amnezia-vpn/amneziawg-windows-client</b></span><span>Версия на GitHub: <b class="mono" data-latest="wg">…</b></span></div>
+              <div class="note mono" data-modpath hidden></div>
+              <div id="instAct-wg"></div>
+            </div>
+            <div data-body="wg">
+            <div id="wDirty" class="sec-fix" hidden><span>Прошлая сессия не была закрыта. Маршруты или DNS могли остаться изменёнными.</span><button class="btn sm primary" data-act="wRepair">Починить сеть</button></div>
             <div class="cols">
-              <div class="panel">
-                <div class="panel-head"><h3>Профили</h3><button class="btn sm" data-act="pickWg"><svg class="ic"><use href="#i-plus"/></svg>Импорт .conf</button></div>
-                <div id="list-wg"></div>
-                <input type="file" id="wgFile" accept=".conf,text/plain" hidden>
+              <div class="stack">
+                <div class="panel">
+                  <div class="panel-head"><h3>Профили</h3><span class="row-btns"><button class="btn sm" data-act="wPaste">Вставить текст</button><button class="btn sm" data-act="pickWg"><svg class="ic"><use href="#i-plus"/></svg>Импорт .conf</button></span></div>
+                  <div id="wPasteBox" hidden>
+                    <div class="row"><span class="lbl">Имя профиля<small>Латиница, цифры, - _ . до 15 знаков: это имя адаптера</small></span><input class="field mono" data-bind="w.imp_name" spellcheck="false" aria-label="Имя профиля" style="width:170px"></div>
+                    <textarea class="field mono" data-bind="w.imp_text" rows="8" spellcheck="false" aria-label="Текст конфига" placeholder="[Interface]&#10;PrivateKey = …&#10;Address = …&#10;&#10;[Peer]&#10;PublicKey = …&#10;Endpoint = …&#10;AllowedIPs = 0.0.0.0/0"></textarea>
+                    <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn" data-act="wPaste">Отмена</button><button class="btn primary" data-act="wImportText">Добавить</button></div>
+                  </div>
+                  <div id="list-wg"></div>
+                  <input type="file" id="wgFile" accept=".conf,text/plain" hidden>
+                  <p class="note mt-s">Ключи хранятся в <span class="mono">modules\wg\data\profiles</span> и доступны только администраторам. В интерфейсе они не показываются. Профили со сценариями PostUp и PreDown Бунт не принимает: такие сценарии запускаются от имени системы.</p>
+                  <pre class="logbox" id="wView" hidden></pre>
+                </div>
+                <div class="panel" id="wStatsBox" hidden>
+                  <h3>Соединение</h3>
+                  <div class="row"><span class="lbl">Туннель</span><span class="val" id="wTun">–</span></div>
+                  <div class="row"><span class="lbl">Последнее рукопожатие<small>Появляется после первого трафика</small></span><span class="val" id="wHs">–</span></div>
+                  <div class="row"><span class="lbl">Получено</span><span class="val" id="wRx">–</span></div>
+                  <div class="row"><span class="lbl">Отправлено</span><span class="val" id="wTx">–</span></div>
+                </div>
               </div>
-              <div class="panel">
-                <h3>Как это работает</h3>
-                <p class="note">Бунт хранит профили у себя и включает туннель одной кнопкой. Ключи остаются на этом компьютере.</p>
+              <div class="stack">
+                <div class="panel">
+                  <h3>Виртуальный адаптер</h3>
+                  <div class="row"><span class="lbl">Состояние</span><span class="val" id="wAdState">–</span></div>
+                  <div class="row"><span class="lbl">Драйвер</span><span class="val" id="wAdDesc">–</span></div>
+                  <div class="row" style="justify-content:flex-end;gap:8px;flex-wrap:wrap">
+                    <button class="btn sm" data-act="wAdapter" data-arg="enable" id="wAdOn">Включить</button>
+                    <button class="btn sm" data-act="wAdapter" data-arg="disable" id="wAdOff">Отключить</button>
+                    <button class="btn sm danger" data-act="wAdapter" data-arg="remove" id="wAdDel">Удалить</button>
+                  </div>
+                  <p class="note mt-s">Адаптер носит имя выбранного профиля и существует, пока туннель включён. Бунт управляет только им, чужие адаптеры (Radmin VPN и другие) не трогает.</p>
+                </div>
+                <div class="panel">
+                  <h3>Защита сети</h3>
+                  <p class="note">Перед подключением Бунт запоминает основной шлюз и DNS физических адаптеров. После отключения он убирает следы туннеля и возвращает DNS. Службе туннеля выставлен ручной запуск, поэтому после перезагрузки VPN сам не поднимется без Бунта. Сброс сети Windows не нужен.</p>
+                  <div class="row"><div class="lbl">Починить сеть<small>Убрать следы туннеля вручную, пока он отключён</small></div><button class="btn sm" data-act="wRepair">Починить</button></div>
+                  <p class="note mt-s" id="wRepairMsg" hidden></p>
+                </div>
+                <div class="panel">
+                  <h3>Дополнительно</h3>
+                  <div class="row"><div class="lbl">Не блокировать остальной трафик<small>Совместимо с Radmin VPN, Hamachi и локальной сетью. Весь интернет идёт через туннель, но клиент не включает брандмауэр-«выключатель». Применяется при следующем подключении</small></div><button class="sw" role="switch" data-sw="w.config.split_default" aria-label="Не блокировать остальной трафик"></button></div>
+                  <div class="row"><div class="lbl">Подключать при запуске Бунта<small>Выбранный профиль. Включите вместе с автозапуском Бунта в «Настройках»</small></div><button class="sw" role="switch" data-sw="w.config.autoconnect" aria-label="Подключать при запуске"></button></div>
+                  <div class="row"><div class="lbl">Не отключать при выходе из Бунта<small>Туннель останется включённым, пока вы не отключите его в Бунте</small></div><button class="sw" role="switch" data-sw="w.config.keep_on_exit" aria-label="Не отключать при выходе"></button></div>
+                  <div class="row"><span class="lbl">Журнал Бунта</span><button class="btn sm" data-act="wLog">Показать</button></div>
+                  <pre class="logbox" id="wLog" hidden></pre>
+                </div>
+                <div class="panel">
+                  <h3>Компонент</h3>
+                  <div class="row"><span class="lbl">Версия</span><span class="val" id="wVer">–</span></div>
+                  <div class="row"><span class="lbl">Источник</span><span class="val">amnezia-vpn/amneziawg-windows-client</span></div>
+                  <div class="row"><span class="lbl">Режим</span><span class="val">Служба туннеля, без окна и трея</span></div>
+                </div>
               </div>
+            </div>
             </div>
           </section>
 

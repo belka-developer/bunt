@@ -8,6 +8,7 @@ mod integrity;
 mod modules;
 mod settings;
 mod fptn;
+mod wg;
 mod telegram;
 mod zapret;
 
@@ -129,7 +130,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let vless = MenuItem::with_id(app, "go:vless", "VLESS · скоро", false, None::<&str>)?;
     let dns = MenuItem::with_id(app, "go:dns", "DNS · скоро", false, None::<&str>)?;
     let fptn = MenuItem::with_id(app, "go:fptn", "FPTN", true, None::<&str>)?;
-    let wg = MenuItem::with_id(app, "go:wg", "WireGuard · скоро", false, None::<&str>)?;
+    let wg = MenuItem::with_id(app, "go:wg", "WireGuard / AmneziaWG", true, None::<&str>)?;
     let updates = MenuItem::with_id(app, "go:updates", "Обновления", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "go:settings", "Настройки", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
@@ -246,7 +247,18 @@ pub fn run() {
             fptn::fptn_adapter,
             fptn::fptn_log,
             fptn::fptn_foreign,
-            fptn::fptn_take_over
+            fptn::fptn_take_over,
+            wg::wg_status,
+            wg::wg_connect,
+            wg::wg_disconnect,
+            wg::wg_repair,
+            wg::wg_import,
+            wg::wg_delete,
+            wg::wg_profile_view,
+            wg::wg_select,
+            wg::wg_config_set,
+            wg::wg_adapter,
+            wg::wg_log
         ])
         .on_window_event(|window, event| {
             if window.label() != "main" {
@@ -284,6 +296,7 @@ pub fn run() {
                 app.state::<zapret::Zapret>().stop();
                 telegram::stop();
                 fptn::shutdown();
+                wg::shutdown();
             }
         });
 }

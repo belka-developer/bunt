@@ -25,6 +25,7 @@ pub(crate) fn source(id: &str) -> Result<(&'static str, &'static str), String> {
         "discord" => Ok(("Flowseal", "zapret-discord-youtube")),
         "telegram" => Ok(("Flowseal", "tg-ws-proxy")),
         "fptn" => Ok(("fptn-project", "fptn")),
+        "wg" => Ok(("amnezia-vpn", "amneziawg-windows-client")),
         _ => Err(format!("Неизвестный компонент: {id}")),
     }
 }
@@ -235,7 +236,7 @@ pub fn modules_dir() -> Result<String, String> {
 #[tauri::command]
 pub async fn latest_component(id: String) -> Result<Latest, String> {
     let rel = fetch_release(&id).await?;
-    let asset = rel.assets.iter().find(|a| a.name.to_lowercase().ends_with(".zip"));
+    let asset = if id == "wg" { wg_asset(&rel) } else { rel.assets.iter().find(|a| a.name.to_lowercase().ends_with(".zip")) };
     Ok(Latest {
         version: clean_version(&rel.tag_name),
         size: asset.and_then(|a| a.size),
@@ -289,6 +290,9 @@ pub async fn install_component(
 
     if id == "fptn" {
         return install_fptn(&app, &rel, &version, &root, &target).await;
+    }
+    if id == "wg" {
+        return install_wg(&app, &rel, &version, &root, &target).await;
     }
     let (url, digest) = pick_archive(&rel)?;
     let staging = root.join(".staging");
@@ -354,6 +358,9 @@ pub async fn uninstall_component(state: tauri::State<'_, crate::zapret::Zapret>,
         if let Ok(dir) = active_dir("fptn") {
             run_fptn_uninstaller(&dir);
         }
+    } else if id == "wg" {
+        // Отключить туннель, убрать за ним сеть и службу, потом стереть файлы вместе с профилями
+        let _ = tauri::async_runtime::spawn_blocking(crate::wg::stop_all).await;
     } else if id == "telegram" {
         crate::telegram::stop();
         crate::telegram::set_enabled(false);
@@ -600,6 +607,161 @@ async fn install_fptn(app: &AppHandle, rel: &Release, version: &str, root: &Path
         for e in rd.flatten() {
             let n = e.file_name().to_string_lossy().to_string();
             if n != version && !crate::fptn::is_service_dir(&n) {
+                let _ = fs::remove_dir_all(e.path());
+            }
+        }
+    }
+    Ok(version.to_string())
+}
+
+// ───────── WireGuard и AmneziaWG: MSI клиента AmneziaWG ─────────
+
+fn msi_arch() -> &'static str {
+    match std::env::consts::ARCH {
+        "aarch64" => "arm64",
+        "x86" => "x86",
+        _ => "amd64",
+    }
+}
+
+/// MSI клиента для архитектуры этого компьютера (сборки для Windows 7 не берём).
+fn wg_asset(rel: &Release) -> Option<&Asset> {
+    let prefix = format!("amneziawg-{}-", msi_arch());
+    rel.assets.iter().find(|a| {
+        let n = a.name.to_lowercase();
+        n.starts_with(&prefix) && n.ends_with(".msi") && !n.contains("windows7")
+    })
+}
+
+/// Скачивает файл целиком с проверкой хеша и показом хода установки (доля `share` процентов).
+async fn download_file(app: &AppHandle, id: &str, url: &str, digest: Option<&str>, dest: &Path, share: u64, label: &str) -> Result<(), String> {
+    let resp = client()?.get(url).send().await.map_err(|e| format!("Не удалось скачать: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("Скачивание: GitHub ответил {}", resp.status()));
+    }
+    let total = resp.content_length();
+    let mut file = fs::File::create(dest).map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut downloaded = 0u64;
+    let mut stream = resp.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Обрыв загрузки: {e}"))?;
+        hasher.update(&chunk);
+        file.write_all(&chunk).map_err(|e| e.to_string())?;
+        downloaded += chunk.len() as u64;
+        if let Some(t) = total.filter(|t| *t > 0) {
+            progress(app, id, downloaded * share / t, 100, label);
+        }
+    }
+    drop(file);
+    if let Some(expected) = digest.and_then(|d| d.strip_prefix("sha256:")) {
+        if !hex::encode(hasher.finalize()).eq_ignore_ascii_case(expected) {
+            return Err("Хеш скачанного файла не совпал с GitHub. Установка отменена.".into());
+        }
+    }
+    Ok(())
+}
+
+/// Папка, где лежит файл с таким именем (поиск вглубь).
+fn find_file_dir(dir: &Path, name: &str) -> Option<PathBuf> {
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let Ok(rd) = fs::read_dir(&d) else { continue };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.file_name().map(|n| n.to_string_lossy().eq_ignore_ascii_case(name)).unwrap_or(false) {
+                return Some(d);
+            }
+        }
+    }
+    None
+}
+
+/// Клиент AmneziaWG приходит как MSI. Бунт не ставит его в систему: msiexec только «распаковывает» пакет
+/// (`/a`, административная установка) в папку, а туннели запускаются службами из этих файлов.
+async fn install_wg(app: &AppHandle, rel: &Release, version: &str, root: &Path, target: &Path) -> Result<String, String> {
+    if !cfg!(windows) {
+        return Err("WireGuard и AmneziaWG ставятся только в Windows.".into());
+    }
+    if !crate::settings::is_admin_sync() {
+        return Err("Для установки нужны права администратора.".into());
+    }
+    let arch = msi_arch();
+    let (url, digest) = match wg_asset(rel) {
+        Some(a) => (a.browser_download_url.clone(), a.digest.clone()),
+        // Лимит API GitHub: список файлов пуст, но имя файла в релизах AmneziaWG предсказуемо
+        None if rel.assets.is_empty() => (
+            format!("https://github.com/amnezia-vpn/amneziawg-windows-client/releases/download/{}/amneziawg-{arch}-{version}.msi", rel.tag_name),
+            None,
+        ),
+        None => return Err(format!("В релизе нет MSI для архитектуры {arch}.")),
+    };
+    let staging = root.join(".staging");
+    let _ = fs::remove_dir_all(&staging);
+    fs::create_dir_all(&staging).map_err(|e| format!("Нет прав на запись в {}: {e}", staging.display()))?;
+
+    let result: Result<(), String> = async {
+        let msi = staging.join("amneziawg.msi");
+        download_file(app, "wg", &url, digest.as_deref(), &msi, 60, "Скачиваем клиент AmneziaWG").await?;
+        progress(app, "wg", 62, 100, "Останавливаем туннель");
+        let _ = tauri::async_runtime::spawn_blocking(crate::wg::stop_all).await;
+        progress(app, "wg", 70, 100, "Распаковываем пакет");
+        let out_dir = staging.join("msi");
+        fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
+        let (msi_s, out_s) = (msi.display().to_string(), out_dir.display().to_string());
+        tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                let status = std::process::Command::new("msiexec")
+                    .raw_arg(format!("/a \"{msi_s}\" /qn TARGETDIR=\"{out_s}\""))
+                    .creation_flags(0x0800_0000)
+                    .status()
+                    .map_err(|e| format!("Не удалось запустить msiexec: {e}"))?;
+                // 3010: нужна перезагрузка, для распаковки это не важно
+                if !status.success() && status.code() != Some(3010) {
+                    return Err(format!("msiexec не смог распаковать пакет (код {}).", status.code().unwrap_or(-1)));
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                let _ = (msi_s, out_s);
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        let src = find_file_dir(&out_dir, crate::wg::EXE).ok_or("В пакете не нашёлся amneziawg.exe")?;
+        if target.is_dir() {
+            fs::remove_dir_all(target).map_err(|e| format!("Не удалось удалить старые файлы: {e}"))?;
+        }
+        fs::create_dir_all(target).map_err(|e| format!("Нет прав на запись в {}: {e}", target.display()))?;
+        for e in fs::read_dir(&src).map_err(|e| e.to_string())?.flatten() {
+            if e.path().is_file() {
+                fs::copy(e.path(), target.join(e.file_name())).map_err(|e| format!("Не удалось скопировать файлы: {e}"))?;
+            }
+        }
+        if !target.join(crate::wg::EXE).is_file() {
+            let _ = fs::remove_dir_all(target);
+            return Err("После распаковки не нашёлся amneziawg.exe".into());
+        }
+        progress(app, "wg", 95, 100, "Записываем хеши файлов");
+        let _ = crate::integrity::write_manifest(target);
+        Ok(())
+    }
+    .await;
+    let _ = fs::remove_dir_all(&staging);
+    result?;
+
+    let mut st = read_state(root);
+    st.insert("wg".into(), version.to_string());
+    write_state(root, &st)?;
+    if let Ok(rd) = fs::read_dir(root.join("wg")) {
+        for e in rd.flatten() {
+            let n = e.file_name().to_string_lossy().to_string();
+            if n != version && !crate::wg::is_service_dir(&n) {
                 let _ = fs::remove_dir_all(e.path());
             }
         }

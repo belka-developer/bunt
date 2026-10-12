@@ -372,3 +372,5 @@ body.app .view { height: 100vh; overflow-y: auto; }
 
 .srv-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .srv-list .btn:not(.primary) { background: var(--panel); }
+
+.row-btns { display: inline-flex; gap: 8px; flex-wrap: wrap; }
