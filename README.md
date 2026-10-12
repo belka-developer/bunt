@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/bunt-banner.svg" alt="Бунт" width="720"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/belka-developer/media-readme/main/bunt/bunt-banner.svg" alt="Бунт" width="720"></p>
 
 # Бунт
 
