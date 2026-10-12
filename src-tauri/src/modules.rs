@@ -196,11 +196,26 @@ pub(crate) fn pick_archive(rel: &Release) -> Result<(String, Option<String>), St
 }
 
 pub(crate) async fn download_bytes(url: &str) -> Result<Vec<u8>, String> {
-    let resp = client()?.get(url).send().await.map_err(|e| format!("Не удалось скачать: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("Скачивание: GitHub ответил {}", resp.status()));
+    // Сеть может моргнуть на любой загрузке: три попытки с растущей паузой
+    let mut last = String::new();
+    for attempt in 1..=3u64 {
+        let one: Result<Vec<u8>, String> = async {
+            let resp = client()?.get(url).send().await.map_err(|e| format!("Не удалось скачать: {e}"))?;
+            if !resp.status().is_success() {
+                return Err(format!("Скачивание: сервер ответил {}", resp.status()));
+            }
+            resp.bytes().await.map(|b| b.to_vec()).map_err(|e| format!("Обрыв загрузки: {e}"))
+        }
+        .await;
+        match one {
+            Ok(b) => return Ok(b),
+            Err(e) => last = e,
+        }
+        if attempt < 3 {
+            tokio::time::sleep(std::time::Duration::from_secs(2 * attempt)).await;
+        }
     }
-    resp.bytes().await.map(|b| b.to_vec()).map_err(|e| format!("Обрыв загрузки: {e}"))
+    Err(last)
 }
 
 fn clean_version(tag: &str) -> String {
@@ -300,7 +315,26 @@ pub async fn install_component(
     fs::create_dir_all(&staging).map_err(|e| format!("Нет прав на запись в {}: {e}", staging.display()))?;
 
     let result: Result<(), String> = async {
-        let root_dir = download_and_extract(&app, &id, &url, digest.as_deref(), &staging).await?;
+        // Первая загрузка с нуля иногда срывается на сети: повторяем с чистой папкой
+        let mut root_dir = None;
+        let mut last_err = String::new();
+        for attempt in 1..=3u64 {
+            match download_and_extract(&app, &id, &url, digest.as_deref(), &staging).await {
+                Ok(d) => {
+                    root_dir = Some(d);
+                    break;
+                }
+                Err(e) => {
+                    last_err = e;
+                    let _ = fs::remove_dir_all(&staging);
+                    let _ = fs::create_dir_all(&staging);
+                    if attempt < 3 {
+                        tokio::time::sleep(std::time::Duration::from_secs(2 * attempt)).await;
+                    }
+                }
+            }
+        }
+        let root_dir = root_dir.ok_or(last_err)?;
         if id == "telegram" {
             // Python и библиотеки для запуска прокси без окна
             crate::telegram::ensure_runtime(&app).await?;
@@ -310,7 +344,7 @@ pub async fn install_component(
         if id == "telegram" {
             crate::telegram::stop();
         } else {
-            state.stop();
+            state.remove_ours();
         }
         // Свои списки берём из заменяемой папки или из предыдущей активной версии
         let previous = read_state(&root).get(&id).map(|v| root.join(&id).join(v));
@@ -348,6 +382,24 @@ pub async fn install_component(
     Ok(version)
 }
 
+/// Стирает папку с повторами: антивирус или только что остановленный драйвер могут держать файл ещё секунду.
+fn remove_dir_retry(dir: &Path) -> Result<(), String> {
+    let mut last = String::new();
+    for i in 0..14 {
+        if !dir.exists() {
+            return Ok(());
+        }
+        match fs::remove_dir_all(dir) {
+            Ok(()) => return Ok(()),
+            Err(e) => last = e.to_string(),
+        }
+        if i < 13 {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    }
+    Err(format!("Не удалось удалить файлы (их держит другая программа?): {last}"))
+}
+
 /// Удаляет компонент целиком: останавливает запрет и стирает папку с файлами и своими списками.
 #[tauri::command]
 pub async fn uninstall_component(state: tauri::State<'_, crate::zapret::Zapret>, id: String) -> Result<(), String> {
@@ -365,14 +417,13 @@ pub async fn uninstall_component(state: tauri::State<'_, crate::zapret::Zapret>,
         crate::telegram::stop();
         crate::telegram::set_enabled(false);
     } else {
-        state.stop();
+        // Запрет выключается полностью: процесс, служба zapret из нашей папки и драйвер WinDivert
+        state.remove_ours();
         crate::zapret::set_enabled(false);
     }
     let root = modules_root()?;
     let dir = root.join(&id);
-    if dir.exists() {
-        fs::remove_dir_all(&dir).map_err(|e| format!("Не удалось удалить файлы (их держит другая программа?): {e}"))?;
-    }
+    remove_dir_retry(&dir)?;
     let mut st = read_state(&root);
     st.remove(&id);
     write_state(&root, &st)
@@ -563,16 +614,20 @@ async fn install_fptn(app: &AppHandle, rel: &Release, version: &str, root: &Path
         progress(app, "fptn", 70, 100, "Устанавливаем FPTN (около минуты)");
         let target_s = target.display().to_string();
         let t2 = target.to_path_buf();
+        let stg = staging.clone();
         tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
             #[cfg(windows)]
             {
                 use std::os::windows::process::CommandExt;
+                // Установщик каждый раз открывает окно Microsoft C++: закрываем его, а если пакета нет, ставим сами без окон
+                let vc = crate::vcredist::watch(stg.clone());
                 let status = std::process::Command::new(&installer)
                     .args(["/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOICONS", "/SP-"])
                     .raw_arg(format!("/DIR=\"{target_s}\""))
                     .creation_flags(0x0800_0000)
-                    .status()
-                    .map_err(|e| format!("Не удалось запустить установщик: {e}"))?;
+                    .status();
+                vc.finish();
+                let status = status.map_err(|e| format!("Не удалось запустить установщик: {e}"))?;
                 // Установщик в конце открывает клиент с треем: он нам не нужен
                 std::thread::sleep(std::time::Duration::from_secs(3));
                 kill_fptn_in(&t2);
@@ -582,7 +637,7 @@ async fn install_fptn(app: &AppHandle, rel: &Release, version: &str, root: &Path
             }
             #[cfg(not(windows))]
             {
-                let _ = (installer, target_s, t2);
+                let _ = (installer, target_s, t2, stg);
             }
             Ok(())
         })

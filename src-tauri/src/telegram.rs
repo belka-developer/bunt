@@ -383,6 +383,21 @@ fn run_py(py: &Path, args: &[&str]) -> Result<(), String> {
     Err(last.into_iter().rev().collect::<Vec<_>>().join(" | "))
 }
 
+/// Python и pip на чистой системе иногда спотыкаются при первом запуске (сеть, антивирус): три попытки.
+fn run_py_retry(py: &Path, args: &[&str]) -> Result<(), String> {
+    let mut last = String::new();
+    for attempt in 1..=3u64 {
+        match run_py(py, args) {
+            Ok(()) => return Ok(()),
+            Err(e) => last = e,
+        }
+        if attempt < 3 {
+            std::thread::sleep(Duration::from_secs(3 * attempt));
+        }
+    }
+    Err(last)
+}
+
 fn runtime_ready() -> bool {
     match runtime_python() {
         Some(py) => run_py(&py, &["-c", "import httpx, h2, certifi"]).is_ok(),
@@ -414,13 +429,13 @@ pub(crate) async fn ensure_runtime(app: &AppHandle) -> Result<(), String> {
         let py = python_exe()?;
         let app2 = app.clone();
         tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
-            run_py(&py, &[&gp_path, "--no-warn-script-location"]).map_err(|e| format!("Не удалось установить pip: {e}"))?;
+            run_py_retry(&py, &[&gp_path, "--no-warn-script-location"]).map_err(|e| format!("Не удалось установить pip: {e}"))?;
             crate::modules::progress(&app2, "telegram", 65, 100, "Устанавливаем библиотеки");
-            run_py(&py, &["-m", "pip", "install", "--no-warn-script-location", "--only-binary=:all:", "httpx[http2]==0.28.1", "certifi"])
+            run_py_retry(&py, &["-m", "pip", "install", "--no-warn-script-location", "--only-binary=:all:", "--retries", "5", "--timeout", "30", "httpx[http2]==0.28.1", "certifi"])
                 .map_err(|e| format!("Не удалось установить библиотеки: {e}"))?;
             crate::modules::progress(&app2, "telegram", 90, 100, "Ускоряем шифрование");
             // cryptography ускоряет шифрование; без неё прокси работает на встроенной замене
-            let _ = run_py(&py, &["-m", "pip", "install", "--no-warn-script-location", "--only-binary=:all:", "cryptography"]);
+            let _ = run_py_retry(&py, &["-m", "pip", "install", "--no-warn-script-location", "--only-binary=:all:", "--retries", "5", "--timeout", "30", "cryptography"]);
             Ok(())
         })
         .await

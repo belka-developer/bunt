@@ -34,6 +34,61 @@ impl Zapret {
             kill_pid(pid);
         }
     }
+
+    /// Полностью выключает запрет из папки Бунта перед удалением или заменой файлов: процесс winws, служба zapret
+    /// (если её поставили из этой папки через service.bat) и драйвер WinDivert, который держит файлы открытыми.
+    /// Чужие службы и драйверы, указывающие в другие папки, не трогает.
+    pub fn remove_ours(&self) {
+        self.stop();
+        if service_exists("zapret") && service_binary("zapret").map(|p| is_ours(&p)).unwrap_or(false) {
+            stop_service("zapret");
+            let _ = sc(&["delete", "zapret"]);
+        }
+        for _ in 0..10 {
+            let pids = our_pids();
+            if pids.is_empty() {
+                break;
+            }
+            for pid in pids {
+                kill_pid(pid);
+            }
+            std::thread::sleep(Duration::from_millis(300));
+        }
+        for name in ["WinDivert", "WinDivert14"] {
+            if service_exists(name) && service_binary(name).map(|p| is_ours(&p)).unwrap_or(false) {
+                stop_service(name);
+                let _ = sc(&["delete", name]);
+            }
+        }
+    }
+}
+
+/// Путь к файлу службы из `sc qc`: без кавычек и префикса `\??\`, который есть у драйверов.
+pub(crate) fn service_binary(name: &str) -> Option<String> {
+    let text = sc(&["qc", name])?;
+    parse_binary_path(&text)
+}
+
+pub(crate) fn parse_binary_path(text: &str) -> Option<String> {
+    let line = text.lines().find(|l| l.contains("BINARY_PATH_NAME"))?;
+    let v = line.split_once(':')?.1.trim();
+    let v = v.trim_start_matches('"');
+    let v = v.trim_start_matches("\\??\\");
+    // у служб после пути идут аргументы: берём путь до .exe или .sys
+    let low = v.to_lowercase();
+    let end = [".exe", ".sys"].iter().filter_map(|e| low.find(e).map(|i| i + e.len())).min().unwrap_or(v.len());
+    Some(v[..end].to_string())
+}
+
+/// Останавливает службу и ждёт, пока она остановится (до пяти секунд).
+fn stop_service(name: &str) {
+    let _ = sc(&["stop", name]);
+    for _ in 0..10 {
+        match sc(&["query", name]) {
+            Some(s) if !s.contains("STOPPED") => std::thread::sleep(Duration::from_millis(500)),
+            _ => break,
+        }
+    }
 }
 
 /// Разбирает bat-файл стратегии в список аргументов для winws.exe.
@@ -400,6 +455,15 @@ pub async fn zapret_take_over(state: tauri::State<'_, Zapret>) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn service_paths() {
+        let svc = "SERVICE_NAME: zapret\r\n        BINARY_PATH_NAME   : \"C:\\Program Files\\Bunt\\modules\\discord\\1.2\\bin\\winws.exe\" --wf-tcp=80\r\n";
+        assert_eq!(parse_binary_path(svc).unwrap(), "C:\\Program Files\\Bunt\\modules\\discord\\1.2\\bin\\winws.exe");
+        let drv = "        BINARY_PATH_NAME   : \\??\\C:\\x\\bin\\WinDivert64.sys\r\n";
+        assert_eq!(parse_binary_path(drv).unwrap(), "C:\\x\\bin\\WinDivert64.sys");
+        assert!(parse_binary_path("nothing").is_none());
+    }
 
     #[test]
     fn parses_flowseal_bat() {

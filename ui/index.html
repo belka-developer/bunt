@@ -295,8 +295,9 @@
                     <textarea class="field mono" data-bind="w.imp_text" rows="8" spellcheck="false" aria-label="Текст конфига" placeholder="[Interface]&#10;PrivateKey = …&#10;Address = …&#10;&#10;[Peer]&#10;PublicKey = …&#10;Endpoint = …&#10;AllowedIPs = 0.0.0.0/0"></textarea>
                     <div class="row" style="justify-content:flex-end;gap:8px"><button class="btn" data-act="wPaste">Отмена</button><button class="btn primary" data-act="wImportText">Добавить</button></div>
                   </div>
+                  <div class="drop" id="wDrop" tabindex="0" role="button" data-act="pickWg" aria-label="Перетащить файл .conf или выбрать"><svg class="ic"><use href="#i-download"/></svg><span><b>Перетащите сюда файл .conf</b><small>или нажмите, чтобы выбрать. Можно сразу несколько файлов</small></span></div>
                   <div id="list-wg"></div>
-                  <input type="file" id="wgFile" accept=".conf,text/plain" hidden>
+                  <input type="file" id="wgFile" accept=".conf,text/plain" multiple hidden>
                   <p class="note mt-s">Ключи хранятся в <span class="mono">modules\wg\data\profiles</span> и доступны только администраторам. В интерфейсе они не показываются. Профили со сценариями PostUp и PreDown Бунт не принимает: такие сценарии запускаются от имени системы.</p>
                   <pre class="logbox" id="wView" hidden></pre>
                 </div>

@@ -347,7 +347,7 @@
     $('#verList').innerHTML = live().map(function (c) {
       var unchecked = !c.checked && (c.id === 'app' || REAL[c.id]);
       var latest = c.next || (unchecked ? '…' : (c.cur || c.latest || '…')), stat;
-      if (c.busy != null) stat = '<span class="tag"><span class="spin"></span>' + c.busy + '%</span>';
+      if (c.busy != null) stat = '<span class="tag">' + c.busy + '%</span>';
       else if (!c.cur) stat = '<button class="btn sm primary" data-act="installComp" data-arg="' + c.id + '">Установить</button>';
       else if (c.next) stat = '<button class="btn sm primary" data-act="updateOne" data-arg="' + c.id + '">Обновить</button>';
       else if (unchecked) stat = isChecking() ? '<span class="tag"><span class="spin"></span>Проверяем…</span>' : '<span class="tag">Не проверено</span>';
@@ -796,23 +796,58 @@
     if (!inTauri || !installed('wg')) return;
     T.core.invoke('wg_config_set', { config: S.w.config }).then(function (st) { applyW(st); toast('Настройки сохранены'); }).catch(wErr).then(renderAll);
   }
-  function wImport(name, text, replace) {
-    if (!inTauri) { toast('Импорт работает только в приложении.', 'warn'); return; }
-    if (!installed('wg')) { toast('Сначала установите компонент.', 'warn'); return; }
-    T.core.invoke('wg_import', { name: name, text: text, replace: !!replace }).then(function (st) {
+  /* quiet: массовая загрузка, конфликты имён не спрашиваем, а возвращаем статус */
+  function wImport(name, text, replace, quiet) {
+    if (!inTauri) { toast('Импорт работает только в приложении.', 'warn'); return Promise.resolve('err'); }
+    if (!installed('wg')) { toast('Сначала установите компонент.', 'warn'); return Promise.resolve('err'); }
+    var status = 'ok';
+    return T.core.invoke('wg_import', { name: name, text: text, replace: !!replace }).then(function (st) {
       applyW(st);
       S.w.paste = false; S.w.imp_text = '';
       var n = name.replace(/\.conf$/i, '');
       addLog({ svc: SVC.wg.name, m: 'Профиль добавлен: ' + n + '.', ok: true });
-      toast('Профиль добавлен');
+      if (!quiet) toast('Профиль добавлен');
     }).catch(function (err) {
       var m = String(err);
       if (m.indexOf('EXISTS:') === 0) {
-        S.w.pending = { name: name, text: text };
-        openModal('Профиль уже есть', '<p>' + esc(m.replace('EXISTS: ', '')) + ' Заменить его новым конфигом?</p>',
-          '<button class="btn" data-act="closeModal">Отмена</button><button class="btn primary" data-act="wReplace">Заменить</button>');
-      } else wErr(m);
-    }).then(renderAll);
+        status = 'exists';
+        if (!quiet) {
+          S.w.pending = { name: name, text: text };
+          openModal('Профиль уже есть', '<p>' + esc(m.replace('EXISTS: ', '')) + ' Заменить его новым конфигом?</p>',
+            '<button class="btn" data-act="closeModal">Отмена</button><button class="btn primary" data-act="wReplace">Заменить</button>');
+        }
+      } else { status = 'err'; wErr((quiet ? name + ': ' : '') + m); }
+    }).then(function () { renderAll(); return status; });
+  }
+  /* несколько файлов подряд (выбор или перетаскивание) */
+  function wImportFiles(files) {
+    var list = Array.prototype.slice.call(files || []);
+    if (!list.length) return;
+    var ok = list.filter(function (f) { return /\.(conf|txt)$/i.test(f.name); });
+    if (ok.length < list.length) toast('Пропущено файлов не .conf: ' + (list.length - ok.length), 'warn');
+    if (!ok.length) return;
+    var big = ok.filter(function (f) { return f.size > 256 * 1024; });
+    if (big.length) { toast('Файл «' + big[0].name + '» слишком большой для конфига WireGuard.', 'warn'); ok = ok.filter(function (f) { return f.size <= 256 * 1024; }); }
+    var single = ok.length === 1;
+    var added = 0, dup = [];
+    ok.reduce(function (chain, f) {
+      return chain.then(function () {
+        return new Promise(function (res) {
+          var r = new FileReader();
+          r.onload = function () { res(String(r.result)); };
+          r.onerror = function () { toast('Не удалось прочитать файл «' + f.name + '».', 'warn'); res(null); };
+          r.readAsText(f);
+        }).then(function (text) {
+          if (text == null) return;
+          return wImport(f.name.replace(/\.(conf|txt)$/i, ''), text, false, !single).then(function (st) {
+            if (st === 'ok') added++; else if (st === 'exists') dup.push(f.name);
+          });
+        });
+      });
+    }, Promise.resolve()).then(function () {
+      if (single) return;
+      toast('Добавлено профилей: ' + added + (dup.length ? '. Уже есть, пропущены: ' + dup.join(', ') : ''), dup.length && !added ? 'warn' : undefined);
+    });
   }
   function wReplace() {
     closeModal();
@@ -1407,15 +1442,26 @@
   $('#modal').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
   $('#vlessIn').addEventListener('keydown', function (e) { if (e.key === 'Enter') addVless(); });
   $('#wgFile').addEventListener('change', function (e) {
-    var f = e.target.files && e.target.files[0];
-    if (!f) return;
-    if (f.size > 256 * 1024) { toast('Файл слишком большой для конфига WireGuard.', 'warn'); e.target.value = ''; return; }
-    var r = new FileReader();
-    r.onload = function () { wImport(f.name.replace(/\.conf$/i, ''), String(r.result), false); };
-    r.onerror = function () { toast('Не удалось прочитать файл.', 'warn'); };
-    r.readAsText(f);
+    wImportFiles(e.target.files);
     e.target.value = '';
   });
+  /* перетаскивание .conf на область импорта; файл, брошенный мимо, не должен открываться в окне */
+  (function () {
+    var zone = $('#wDrop'), depth = 0;
+    var hasFiles = function (e) { var t = e.dataTransfer && e.dataTransfer.types; return !!t && Array.prototype.indexOf.call(t, 'Files') >= 0; };
+    document.addEventListener('dragover', function (e) { if (hasFiles(e)) e.preventDefault(); });
+    document.addEventListener('drop', function (e) { if (hasFiles(e)) e.preventDefault(); });
+    if (!zone) return;
+    zone.addEventListener('dragenter', function (e) { if (!hasFiles(e)) return; e.preventDefault(); depth++; zone.classList.add('over'); });
+    zone.addEventListener('dragover', function (e) { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+    zone.addEventListener('dragleave', function () { depth = Math.max(0, depth - 1); if (!depth) zone.classList.remove('over'); });
+    zone.addEventListener('drop', function (e) {
+      if (!hasFiles(e)) return;
+      e.preventDefault(); depth = 0; zone.classList.remove('over');
+      wImportFiles(e.dataTransfer.files);
+    });
+    zone.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#wgFile').click(); } });
+  })();
 
   /* старт */
   S.comps.forEach(function (c) { if (c.id !== 'app') c.demo = true; });

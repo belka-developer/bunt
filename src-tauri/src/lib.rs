@@ -9,6 +9,7 @@ mod modules;
 mod settings;
 mod fptn;
 mod wg;
+mod vcredist;
 mod telegram;
 mod zapret;
 
