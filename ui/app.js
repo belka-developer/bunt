@@ -612,10 +612,26 @@
   function vpnConflict(id, quiet) {
     var other = VPNS.filter(function (x) { return x !== id && (S.on[x] || vpnBusy(x)); })[0];
     if (!other) return false;
-    var msg = SVC[other].name + ' ' + (S.on[other] ? 'включён' : 'ещё подключается') + '. Отключите его, прежде чем включать ' + SVC[id].name + ': два VPN сразу ломают маршруты и интернет.';
-    if (quiet) addLog({ svc: SVC[id].name, m: 'Не включён: ' + msg });
-    else toast(msg, 'warn');
+    var on = SVC[other].name, mine = SVC[id].name;
+    if (quiet) { addLog({ svc: mine, m: 'Не включён: ' + on + ' уже работает, два VPN сразу не включаются.' }); return true; }
+    openModal('Уже включён ' + esc(on),
+      '<p>' + esc(on) + ' ' + (S.on[other] ? 'сейчас работает' : 'ещё подключается') + '. Два VPN сразу делят маршруты и ломают интернет, поэтому одновременно может работать только один.</p>' +
+      '<p class="note">Бунт отключит ' + esc(on) + ', вернёт сеть в исходное состояние и сразу включит ' + esc(mine) + '.</p>',
+      '<button class="btn" data-act="closeModal">Отмена</button><button class="btn primary" data-act="vpnSwitch" data-arg="' + other + ':' + id + '">Отключить ' + esc(on) + ' и включить ' + esc(mine) + '</button>');
     return true;
+  }
+  /* переключение с одного VPN на другой: сначала ждём полного отключения первого */
+  function vpnSwitch(arg) {
+    closeModal();
+    var p = String(arg).split(':'), other = p[0], id = p[1];
+    if (VPNS.indexOf(other) < 0 || VPNS.indexOf(id) < 0) return;
+    var tries = 0;
+    setSvc(other, false, true);
+    (function wait() {
+      if (!S.on[other] && !vpnBusy(other)) { setSvc(id, true); return; }
+      if (++tries > 200) { toast('Не удалось отключить ' + SVC[other].name + '. ' + SVC[id].name + ' не включён.', 'warn'); return; }
+      setTimeout(wait, 300);
+    })();
   }
   /* FPTN: консольный клиент с защитой сети, нужны права администратора */
   var FNUM = ['mtu'];
@@ -1374,6 +1390,7 @@
     addVless: addVless,
     pingAll: function (a) { pingAll(a); },
     pickWg: function () { $('#wgFile').click(); },
+    vpnSwitch: function (a) { vpnSwitch(a); },
     wPaste: function () { S.w.paste = !S.w.paste; renderAll(); },
     wImportText: wImportText, wRepair: wRepair, wLog: wLog,
     wPick: function (a) { wPick(a); }, wDel: function (a) { wDelAsk(a); }, wDelDo: function (a) { wDelDo(a); }, wView: function (a) { wView(a); },
