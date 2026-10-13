@@ -61,7 +61,7 @@
             <button class="nav" data-go="home"><svg class="ic"><use href="#i-home"/></svg>Главная</button>
             <button class="nav" data-go="discord"><svg class="ic"><use href="#i-chat"/></svg>Zapret (Discord)</button>
             <button class="nav" data-go="telegram"><svg class="ic"><use href="#i-plane"/></svg>Zapret (Telegram)</button>
-            <button class="nav" data-go="vless"><svg class="ic"><use href="#i-net"/></svg>VLESS<span class="soon-tag">скоро</span></button>
+            <button class="nav" data-go="vless"><svg class="ic"><use href="#i-net"/></svg>VLESS</button>
             <button class="nav" data-go="wg"><svg class="ic"><use href="#i-vpn"/></svg>WireGuard</button>
             <button class="nav" data-go="dns"><svg class="ic"><use href="#i-globe"/></svg>DNS</button>
             <button class="nav" data-go="fptn"><svg class="ic"><use href="#i-tunnel"/></svg>FPTN</button>
@@ -240,30 +240,94 @@
           </section>
 
           <!-- VLESS -->
-          <section data-page="vless" data-soon hidden>
-            <div class="soon">
-              <span class="badge b-vless"><svg class="ic"><use href="#i-net"/></svg></span>
-              <span class="tag warn">Скоро</span>
-              <h1>VLESS</h1>
-              <p class="sub">Здесь появится управление серверами и подписками VLESS. Раздел в разработке.</p>
-            </div>
+          <section data-page="vless" hidden>
             <div class="page-head">
               <div>
                 <h1>VLESS</h1>
-                <p class="sub">Серверы и подписки. Выберите сервер, затем включите.</p>
+                <p class="sub">Серверы и подписки VLESS на ядре Xray-core. Можно пустить через сервер весь трафик или только нужные приложения и сайты.</p>
               </div>
               <div class="head-sw"><span class="state" data-state="vless"></span><button class="sw" role="switch" data-svc="vless" aria-label="VLESS"></button></div>
             </div>
+            <div class="panel install" id="inst-vless" hidden>
+              <span class="badge b-vless" id="instBadge-vless"></span>
+              <h3>Не установлено</h3>
+              <p class="sub">Бунт скачает ядро Xray-core, проверит хеш и распакует его в папку <span class="mono">modules</span>, ничего не устанавливая в систему. Для режима TUN рядом кладётся подписанный драйвер wintun.</p>
+              <div class="inst-meta"><span>Источник: <b class="mono">XTLS/Xray-core</b></span><span>Версия на GitHub: <b class="mono" data-latest="vless">…</b></span></div>
+              <div class="note mono" data-modpath hidden></div>
+              <div id="instAct-vless"></div>
+            </div>
+            <div data-body="vless">
+            <div id="vDirty" class="sec-fix" hidden><span>Прошлая сессия не была закрыта. Маршруты, DNS или системный прокси могли остаться изменёнными.</span><button class="btn sm primary" data-act="vRepair">Починить сеть</button></div>
             <div class="cols">
-              <div class="panel">
-                <div class="panel-head"><h3>Серверы</h3><button class="btn sm" data-act="pingAll" data-arg="vless"><svg class="ic"><use href="#i-refresh"/></svg>Проверить пинг</button></div>
-                <div id="list-vless"></div>
+              <div class="stack">
+                <div class="panel">
+                  <div class="panel-head"><h3>Серверы</h3><button class="btn sm" data-act="vPing" id="vPingBtn"><svg class="ic"><use href="#i-refresh"/></svg>Проверить пинг</button></div>
+                  <div id="list-vless"></div>
+                  <div class="field-row"><input class="field mono" id="vlessIn" placeholder="vless://… или адрес подписки https://…" aria-label="Ссылка vless или подписка"><button class="btn primary" data-act="vImport"><svg class="ic"><use href="#i-plus"/></svg>Добавить</button></div>
+                  <p class="note mt" id="vlessMsg">Вставьте ссылку vless:// (можно несколько, по одной в строке) или адрес подписки.</p>
+                  <pre class="logbox" id="vView" hidden></pre>
+                </div>
+                <div class="panel">
+                  <h3>Подписки</h3>
+                  <div id="vSubs"></div>
+                  <p class="note mt-s">Подписка обновляется кнопкой: Бунт заменит серверы из неё свежими. Серверы других протоколов (vmess, trojan и др.) пропускаются.</p>
+                </div>
+                <div class="panel">
+                  <div class="panel-head"><h3>Правила</h3><button class="btn sm" data-act="vQuick">Российские сайты напрямую</button></div>
+                  <p class="note">Правила проверяются сверху вниз. Что не подошло ни под одно правило, идёт по варианту «по умолчанию».</p>
+                  <div class="row"><span class="lbl">По умолчанию<small>Для всего остального трафика</small></span>
+                    <span class="seg" role="group" aria-label="По умолчанию"><button data-act="vDefault" data-arg="proxy" id="vDefProxy">Через VLESS</button><button data-act="vDefault" data-arg="direct" id="vDefDirect">Напрямую</button></span></div>
+                  <div id="vRules"></div>
+                  <div class="rule-add">
+                    <select class="field" data-bind="v.rule.kind" aria-label="Тип правила"><option value="app">Приложение</option><option value="domain">Домен</option><option value="ip">IP или сеть</option></select>
+                    <input class="field mono" data-bind="v.rule.value" id="vRuleVal" spellcheck="false" aria-label="Значение правила" placeholder="chrome.exe">
+                    <select class="field" data-bind="v.rule.action" aria-label="Действие"><option value="proxy">Через VLESS</option><option value="direct">Напрямую</option><option value="block">Блокировать</option></select>
+                    <button class="btn primary" data-act="vRuleAdd"><svg class="ic"><use href="#i-plus"/></svg>Добавить</button>
+                  </div>
+                  <div class="row" style="justify-content:flex-start;gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="vProcs">Выбрать из запущенных приложений</button></div>
+                  <p class="note mt-s" id="vRuleHint">Приложение: имя процесса (chrome.exe), полный путь или папка со слэшем на конце. Домен: example.com (с поддоменами), full:a.example.com, regexp:…, geosite:google. Сеть: 10.0.0.0/8 или geoip:ru. Изменения применяются при следующем подключении.</p>
+                </div>
               </div>
-              <div class="panel">
-                <h3>Добавить</h3>
-                <div class="field-row"><input class="field mono" id="vlessIn" placeholder="vless://… или ссылка на подписку" aria-label="Ссылка vless или подписка"><button class="btn primary" data-act="addVless"><svg class="ic"><use href="#i-plus"/></svg>Добавить</button></div>
-                <p class="note mt" id="vlessMsg">Вставьте ссылку из буфера обмена или адрес подписки.</p>
+              <div class="stack">
+                <div class="panel">
+                  <h3>Режим</h3>
+                  <div class="row"><span class="lbl">Как пускать трафик</span>
+                    <span class="seg" role="group" aria-label="Режим"><button data-act="vMode" data-arg="tun" id="vModeTun">TUN</button><button data-act="vMode" data-arg="proxy" id="vModeProxy">Прокси</button></span></div>
+                  <p class="note" id="vModeNote"></p>
+                  <div id="vPorts">
+                    <div class="row"><span class="lbl">Порт SOCKS<small>Локальный адрес 127.0.0.1</small></span><input class="field mono" data-bind="v.socks" inputmode="numeric" aria-label="Порт SOCKS" style="width:100px"></div>
+                    <div class="row"><span class="lbl">Порт HTTP<small>Его получает системный прокси Windows</small></span><input class="field mono" data-bind="v.http" inputmode="numeric" aria-label="Порт HTTP" style="width:100px"></div>
+                  </div>
+                  <div id="vDnsRow" class="row"><span class="lbl">DNS в режиме TUN<small>Через запятую. Запросы идут через ядро по общим правилам</small></span><input class="field mono" data-bind="v.dns_text" spellcheck="false" aria-label="DNS в режиме TUN" style="width:190px"></div>
+                </div>
+                <div class="panel" id="vStatsBox" hidden>
+                  <h3>Соединение</h3>
+                  <div class="row"><span class="lbl">Режим</span><span class="val" id="vRunMode">–</span></div>
+                  <div class="row"><span class="lbl">Сервер</span><span class="val" id="vRunSrv">–</span></div>
+                  <div class="row"><span class="lbl">Адаптер TUN</span><span class="val" id="vRunAd">–</span></div>
+                </div>
+                <div class="panel">
+                  <h3>Защита сети</h3>
+                  <p class="note">Перед подключением Бунт запоминает шлюз и DNS физических адаптеров и прежний системный прокси. После отключения или сбоя он убирает следы и всё возвращает. Сброс сети Windows не нужен. Локальная сеть (домашние устройства, Radmin VPN) по умолчанию идёт напрямую.</p>
+                  <div class="row"><div class="lbl">Починить сеть<small>Убрать следы вручную, пока VLESS отключён</small></div><button class="btn sm" data-act="vRepair">Починить</button></div>
+                  <p class="note mt-s" id="vRepairMsg" hidden></p>
+                </div>
+                <div class="panel">
+                  <h3>Дополнительно</h3>
+                  <div class="row"><div class="lbl">Локальную сеть напрямую<small>Адреса 192.168.x.x, 10.x.x.x и другие частные идут мимо сервера</small></div><button class="sw" role="switch" data-sw="v.config.bypass_lan" aria-label="Локальную сеть напрямую"></button></div>
+                  <div class="row"><div class="lbl">Подключать при запуске Бунта<small>Выбранный сервер. Включите вместе с автозапуском Бунта в «Настройках»</small></div><button class="sw" role="switch" data-sw="v.config.autoconnect" aria-label="Подключать при запуске"></button></div>
+                  <div class="row"><div class="lbl">Не отключать при выходе из Бунта<small>Ядро останется работать, пока вы не отключите его в Бунте</small></div><button class="sw" role="switch" data-sw="v.config.keep_on_exit" aria-label="Не отключать при выходе"></button></div>
+                  <div class="row"><span class="lbl">Журнал</span><button class="btn sm" data-act="vLog">Показать</button></div>
+                  <pre class="logbox" id="vLog" hidden></pre>
+                </div>
+                <div class="panel">
+                  <h3>Компонент</h3>
+                  <div class="row"><span class="lbl">Версия ядра</span><span class="val" id="vVer">–</span></div>
+                  <div class="row"><span class="lbl">Источник</span><span class="val">XTLS/Xray-core</span></div>
+                  <div class="row"><span class="lbl">Режим</span><span class="val">Скрытый процесс, без окна и трея</span></div>
+                </div>
               </div>
+            </div>
             </div>
           </section>
 

@@ -397,3 +397,18 @@ body.app .view { height: 100vh; overflow-y: auto; }
 .dns-ad input { accent-color: var(--accent); width: 16px; height: 16px; flex: none; }
 .dns-ad span { display: grid; gap: 2px; min-width: 0; }
 .dns-ad small { color: var(--muted); font-size: 11.5px; overflow-wrap: anywhere; }
+
+/* VLESS */
+.rule-add { display: grid; grid-template-columns: 130px minmax(0, 1fr) 140px auto; gap: 8px; margin: 12px 0 8px; align-items: center; }
+.rule-add .field { height: 36px; }
+@media (max-width: 760px) { .rule-add { grid-template-columns: 1fr 1fr; } }
+.rule { display: flex; align-items: center; gap: 10px; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.rule .rv { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.rule .rv b { font-weight: 500; font-size: 13px; overflow-wrap: anywhere; }
+.rule .rv small { color: var(--muted); font-size: 11.5px; }
+.rule .tag { cursor: pointer; background: none; font: inherit; font-size: 11.5px; }
+.proc-list { max-height: 320px; overflow: auto; display: grid; gap: 2px; margin-top: 10px; }
+.proc-list button { display: grid; gap: 1px; text-align: left; background: none; border: 0; border-radius: 8px; padding: 7px 10px; color: var(--fg); cursor: pointer; font: inherit; }
+.proc-list button:hover, .proc-list button:focus-visible { background: var(--accent-soft); }
+.proc-list small { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.proc-list button[hidden] { display: none; }

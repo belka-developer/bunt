@@ -583,6 +583,9 @@ fn connect_blocking(name: &str) -> Result<(), String> {
     if crate::fptn::is_running() {
         return Err("FPTN сейчас включён. Отключите его, прежде чем включать WireGuard или AmneziaWG: два VPN сразу ломают маршруты.".into());
     }
+    if crate::vless::is_running() {
+        return Err("VLESS сейчас включён. Отключите его, прежде чем включать WireGuard или AmneziaWG: два VPN сразу ломают маршруты.".into());
+    }
     if !valid_name(name) {
         return Err("Неверное имя профиля.".into());
     }

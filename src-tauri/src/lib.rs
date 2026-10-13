@@ -10,6 +10,7 @@ mod settings;
 mod fptn;
 mod wg;
 mod dns;
+mod vless;
 mod vcredist;
 mod telegram;
 mod zapret;
@@ -129,7 +130,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let open = MenuItem::with_id(app, "open", "Открыть Бунт", true, None::<&str>)?;
     let discord = MenuItem::with_id(app, "go:discord", "Запрет Discord и YouTube", true, None::<&str>)?;
     let telegram = MenuItem::with_id(app, "go:telegram", "Запрет Telegram", true, None::<&str>)?;
-    let vless = MenuItem::with_id(app, "go:vless", "VLESS · скоро", false, None::<&str>)?;
+    let vless = MenuItem::with_id(app, "go:vless", "VLESS", true, None::<&str>)?;
     let dns = MenuItem::with_id(app, "go:dns", "DNS", true, None::<&str>)?;
     let fptn = MenuItem::with_id(app, "go:fptn", "FPTN", true, None::<&str>)?;
     let wg = MenuItem::with_id(app, "go:wg", "WireGuard / AmneziaWG", true, None::<&str>)?;
@@ -264,7 +265,22 @@ pub fn run() {
             dns::dns_status,
             dns::dns_apply,
             dns::dns_reset,
-            dns::dns_ping
+            dns::dns_ping,
+            vless::vless_status,
+            vless::vless_connect,
+            vless::vless_disconnect,
+            vless::vless_repair,
+            vless::vless_import,
+            vless::vless_delete,
+            vless::vless_select,
+            vless::vless_config_set,
+            vless::vless_profile_view,
+            vless::vless_ping,
+            vless::vless_processes,
+            vless::vless_log,
+            vless::vless_sub_add,
+            vless::vless_sub_refresh,
+            vless::vless_sub_remove
         ])
         .on_window_event(|window, event| {
             if window.label() != "main" {
@@ -303,6 +319,7 @@ pub fn run() {
                 telegram::stop();
                 fptn::shutdown();
                 wg::shutdown();
+                vless::shutdown();
             }
         });
 }

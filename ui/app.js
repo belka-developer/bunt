@@ -15,7 +15,7 @@
   };
   var IDS = Object.keys(SVC);
   /* разделы-заглушки: чтобы вернуть раздел, уберите его из SOON и удалите data-soon у секции */
-  var SOON = { vless: true };
+  var SOON = {};
   /* внутри Tauri доступны настоящие команды, в обычном браузере остаётся макет */
   var T = window.__TAURI__;
   var inTauri = !!(T && T.core && T.core.invoke);
@@ -42,6 +42,7 @@
     telegram: { port: '1443', link: '' },
     fc: { token_in: '', bypass_method: 'sni-spoofing-yandex-26-4', strategy: 'rolling-tunnel', sni: 'google.com', mtu: '1420', preferred_server: '', tun_name: 'FPTN', tun_ip: '10.0.0.1', exclude_networks: '10.0.0.0/8,192.168.0.0/16', include_networks: '', split: false, split_mode: 'exclude', split_domains: '', adblock: true, blacklist: '', auto_gateway: true, remove_adapter: true, autostart: false },
     fptn: { tokenSet: false, hint: '', servers: [], tokenError: '', adapter: { exists: false, status: '', description: '' }, dirty: false, busy: false, repairMsg: '', logOpen: false, log: '' },
+    v: { profiles: [], config: { active: '', mode: 'tun', socks_port: 10808, http_port: 10809, default_action: 'proxy', bypass_lan: true, dns: ['1.1.1.1', '8.8.8.8'], rules: [], subs: [], autoconnect: false, keep_on_exit: false }, running: false, tun: false, dirty: false, adapter: false, busy: false, ping: {}, pinging: false, repairMsg: '', logOpen: false, log: '', view: '', viewName: '', rule: { kind: 'app', value: '', action: 'proxy' }, socks: '10808', http: '10809', dns_text: '1.1.1.1, 8.8.8.8', loaded: false },
     dn: { presets: [], adapters: [], active: '', has_snapshot: false, config: { last: '', custom: ['', ''], ipv6: true, doh: false }, vpn: false, doh_supported: false, busy: false, loaded: false, off: [], ping: {}, pinging: false, c1: '', c2: '', msg: '' },
     w: { profiles: [], config: { active: '', autoconnect: false, keep_on_exit: false, split_default: true }, running: false, tunnel: '', dirty: false, adapter: { exists: false, status: '', description: '' }, stats: { handshake_ago: null, rx: 0, tx: 0 }, busy: false, repairMsg: '', logOpen: false, log: '', paste: false, imp_name: 'wg0', imp_text: '', view: '', viewName: '' },
     tgc: { autostart: false, host: '127.0.0.1', port: '1443', secret: '', dc_ip: '2:149.154.167.220\n4:149.154.167.220', verbose: false, buf_kb: '256', pool_size: '4', log_max_mb: '5', cfproxy: true, h2: true, cf_domain_on: false, cf_domain: '', cf_worker_on: false, cf_worker: '', force_test_dc: false, no_secure: false, fake_tls_domain: '' },
@@ -51,15 +52,8 @@
       ipset: { file: 'ipset-all.txt', title: 'Свои IP и подсети', hint: 'IP-адреса и подсети для обхода, по одному на строку.', text: '# IP и подсети\n203.0.113.0/24\n' },
       ipsetEx: { file: 'ipset-exclude-user.txt', title: 'Исключения IP', hint: 'IP-адреса и подсети, которые не нужно обрабатывать.', text: '' }
     },
-    prof: {
-      vless: [
-        { id: 1, name: 'Франкфурт · Reality', host: 'fra1.example.net', ping: 48 },
-        { id: 2, name: 'Хельсинки · TLS', host: 'hel2.example.net', ping: 61 },
-        { id: 3, name: 'Стамбул · WebSocket', host: 'ist1.example.net', ping: 92 }
-      ],
-      wg: []
-    },
-    sel: { vless: null, wg: null },
+    prof: {},
+    sel: {},
     nextId: 100,
     uptime: 28 * 3600 + 32 * 60,
     logs: [
@@ -74,7 +68,7 @@
       { id: 'discord', name: 'Zapret (Discord)', checked: true, cur: null, latest: '1.2.3', next: null, cls: 'b-discord', icon: 'chat', size: '12.4 МБ', src: 'Flowseal/zapret-discord-youtube (GitHub)', sha: '3f8e2c4d6a1b…9e07', notes: [], busy: null },
       { id: 'telegram', name: 'Zapret (Telegram)', cur: null, latest: '1.2.4', next: null, cls: 'b-telegram', icon: 'plane', size: '3.1 МБ', src: 'Flowseal/tg-ws-proxy (GitHub)', sha: '7be04a19c3d8…12ff', notes: [], busy: null },
       { id: 'fptn', name: 'FPTN', cur: null, latest: '0.4.6', next: null, cls: 'b-fptn', icon: 'tunnel', size: '58.5 МБ', src: 'fptn-project/fptn (GitHub)', sha: '–', notes: [], busy: null },
-      { id: 'vless', name: 'VLESS', cur: '2.0.1', next: null, cls: 'b-vless', icon: 'net', size: '21.7 МБ', src: 'GitHub Releases', sha: 'c20d5e71b8a4…03aa', notes: [], busy: null },
+      { id: 'vless', name: 'VLESS (Xray-core)', cur: null, latest: '26.3.27', next: null, cls: 'b-vless', icon: 'net', size: '30 МБ', src: 'XTLS/Xray-core (GitHub)', sha: '–', notes: [], busy: null },
       { id: 'wg', name: 'WireGuard / AmneziaWG', cur: null, latest: '3.1.0', next: null, cls: 'b-wg', icon: 'vpn', size: '3.5 МБ', src: 'amnezia-vpn/amneziawg-windows-client (GitHub)', sha: '–', notes: [], busy: null }
     ],
     lastCheck: 'сегодня, 14:45',
@@ -97,7 +91,6 @@
 
   var get = function (p) { return p.split('.').reduce(function (o, k) { return o[k]; }, S); };
   var set = function (p, v) { var a = p.split('.'); var k = a.pop(); a.reduce(function (o, x) { return o[x]; }, S)[k] = v; };
-  var selName = function (t) { var id = S.sel[t]; var p = S.prof[t].filter(function (x) { return x.id === id; })[0]; return p ? p.name : null; };
 
   /* уведомления */
   function toast(msg, kind) {
@@ -125,7 +118,7 @@
       fptn: function () { return [['Метод', S.fc.bypass_method === 'obfuscation' ? 'Обфускация' : 'SNI-маскировка'], ['Адаптер', S.fc.tun_name]]; },
       discord: function () { return [['Метод', 'winws'], ['Режим', S.discord.mode === 'auto' ? 'Авто' : 'Вручную']]; },
       telegram: function () { return [['Метод', 'MTProto-прокси'], ['Порт', String(S.telegram.port)]]; },
-      vless: function () { return [['Сервер', selName('vless') || 'Не выбран'], ['Профиль', S.sel.vless ? 'Основной' : 'Нет']]; },
+      vless: function () { var p = S.v.profiles.filter(function (x) { return x.id === S.v.config.active; })[0]; return [['Сервер', p ? p.name : 'Не выбран'], ['Режим', S.v.config.mode === 'proxy' ? 'Прокси' : 'TUN']]; },
       wg: function () { var a = S.w.config.active, p = S.w.profiles.filter(function (x) { return x.name === a; })[0]; return [['Профиль', a || 'Не выбран'], ['Тип', p ? (p.awg ? 'AmneziaWG' : 'WireGuard') : '–']]; }
     };
     var host = $('#cards');
@@ -153,7 +146,7 @@
   }
 
   function renderInstall() {
-    ['discord', 'telegram', 'fptn', 'wg'].forEach(function (id) {
+    ['discord', 'telegram', 'fptn', 'wg', 'vless'].forEach(function (id) {
       var c = comp(id), ok = installed(id), box = $('#inst-' + id), body = document.querySelector('[data-body="' + id + '"]');
       if (!box || !body) return;
       box.hidden = ok; body.hidden = !ok;
@@ -161,7 +154,7 @@
       if (sw) sw.parentNode.hidden = !ok;
       document.querySelector('[data-latest="' + id + '"]').textContent = c.latest || '…';
       $('#instAct-' + id).innerHTML = c.busy != null
-        ? '<span class="bar-track"><span class="bar-fill" style="width:' + c.busy + '%"></span></span><div class="note mt-s">' + (id === 'telegram' || id === 'fptn' || id === 'wg' ? esc(c.stage || 'Готовим установку') + '… ' + c.busy + '%. Это займёт около минуты.' : 'Скачиваем и проверяем файлы… ' + c.busy + '%') + '</div>'
+        ? '<span class="bar-track"><span class="bar-fill" style="width:' + c.busy + '%"></span></span><div class="note mt-s">' + (id === 'telegram' || id === 'fptn' || id === 'wg' || id === 'vless' ? esc(c.stage || 'Готовим установку') + '… ' + c.busy + '%. Это займёт около минуты.' : 'Скачиваем и проверяем файлы… ' + c.busy + '%') + '</div>'
         : '<button class="btn primary" data-act="installComp" data-arg="' + id + '">' + ico('plus') + 'Установить</button>';
     });
   }
@@ -173,7 +166,7 @@
       ['chat', 'Запрет Discord и YouTube' + (installed('discord') ? (S.on.discord ? ' · включён' : ' · выключен') : ''), 'discord'],
       ['plane', 'Запрет Telegram' + (installed('telegram') ? (S.on.telegram ? ' · включён' : ' · выключен') : ''), 'telegram'],
       ['tunnel', 'FPTN' + (installed('fptn') ? (S.on.fptn ? ' · подключён' : ' · отключён') : ''), 'fptn'],
-      ['net', 'VLESS · скоро', null],
+      ['net', 'VLESS' + (installed('vless') ? (S.on.vless ? ' · подключён' : ' · отключён') : ''), 'vless'],
       ['vpn', 'WireGuard / AmneziaWG' + (installed('wg') ? (S.on.wg ? ' · подключён' : ' · отключён') : ''), 'wg'],
       ['globe', 'DNS' + (S.dn.loaded && S.dn.active ? ' · ' + (DN_ACTIVE[S.dn.active] || (S.dn.presets.filter(function (p) { return p.id === S.dn.active; })[0] || {}).name || '') : ''), 'dns'],
       null,
@@ -237,20 +230,6 @@
     var tv = $('#tVer'); if (tv) tv.textContent = comp('telegram').cur || '–';
   }
 
-  function renderProfiles(t) {
-    var host = $('#list-' + t), arr = S.prof[t];
-    if (!arr.length) {
-      host.innerHTML = '<div class="empty"><span>Профилей пока нет.</span></div>';
-      return;
-    }
-    host.innerHTML = arr.map(function (p) {
-      var sel = S.sel[t] === p.id;
-      return '<div class="prof ' + (sel ? 'sel' : '') + '"><button class="pick" data-pick="' + t + ':' + p.id + '" aria-pressed="' + sel + '"><span class="radio"></span><span class="pn"><b>' + esc(p.name) + '</b><small>' + esc(p.host) + '</small></span></button>' +
-        (p.ping != null ? '<span class="tag ' + (p.ping < 80 ? 'ok' : 'warn') + '">' + p.ping + ' мс</span>' : '') +
-        '<button class="btn sm ghost" data-del="' + t + ':' + p.id + '" aria-label="Удалить ' + esc(p.name) + '">' + ico('x') + '</button></div>';
-    }).join('');
-  }
-
   /* упрощённый разбор описания релиза: заголовки, списки, жирный текст */
   function md(src) {
     var out = [], list = false;
@@ -281,7 +260,7 @@
   }
   function loadNotes() {
     if (!inTauri) return;
-    ['app', 'discord', 'telegram', 'fptn', 'wg'].forEach(function (id) {
+    ['app', 'discord', 'telegram', 'fptn', 'wg', 'vless'].forEach(function (id) {
       var c = comp(id);
       if (!c || (id !== 'app' && !c.cur)) return;
       T.core.invoke('release_notes', { id: id }).then(function (n) {
@@ -376,7 +355,7 @@
     $('#btnSec').disabled = run;
     var bo = $('#btnSecOnline'); if (bo) bo.disabled = run;
     var fix = $('#secFix');
-    if (fix) fix.innerHTML = (bad && !run && inTauri) ? ['discord', 'telegram', 'fptn', 'wg'].filter(installed).map(function (id) {
+    if (fix) fix.innerHTML = (bad && !run && inTauri) ? ['discord', 'telegram', 'fptn', 'wg', 'vless'].filter(installed).map(function (id) {
       return '<div class="sec-fix"><span>Файлы компонента «' + esc(comp(id).name) + '» отличаются от оригинала. Лучше всего переустановить его.</span><button class="btn sm primary" data-act="reinstallAsk" data-arg="' + id + '">Переустановить</button></div>';
     }).join('') : '';
     var RES = { ok: 'OK', warn: 'Внимание', bad: 'Нарушено', info: 'Заметка', run: 'Проверяю…', idle: 'Ожидает' };
@@ -400,7 +379,7 @@
 
   function renderAll() {
     renderSide(); renderCards(); renderTray(); renderHeads(); renderLog();
-    renderInstall(); renderDiscord(); renderTelegram(); renderFptn(); renderWg(); renderDn(); renderProfiles('vless');
+    renderInstall(); renderDiscord(); renderTelegram(); renderFptn(); renderWg(); renderDn(); renderVless();
     renderVersions(); renderNotes(); renderSecurity(); renderAdmin(); sync(); syncTray();
   }
 
@@ -421,15 +400,12 @@
       if (!quiet) { toast('Сначала установите компонент.', 'warn'); go(id); }
       return false;
     }
-    if (on && id === 'vless' && !S.sel[id]) {
-      if (!quiet) { toast('Сначала выберите сервер VLESS.', 'warn'); go(id); }
-      return false;
-    }
     if (on && VPNS.indexOf(id) >= 0 && vpnConflict(id, quiet)) return false;
     if (inTauri && id === 'discord') { realDiscord(on, quiet); return true; }
     if (inTauri && id === 'telegram') { realTelegram(on, quiet); return true; }
     if (inTauri && id === 'fptn') { realFptn(on, quiet); return true; }
     if (inTauri && id === 'wg') { realWg(on, quiet); return true; }
+    if (inTauri && id === 'vless') { realVless(on, quiet); return true; }
     S.on[id] = on;
     var n = SVC[id].name;
     if (on) {
@@ -610,7 +586,7 @@
   }
   /* VPN-подобные службы делят маршруты: одновременно может работать только одна */
   var VPNS = ['fptn', 'wg', 'vless'];
-  function vpnBusy(id) { return id === 'fptn' ? S.fptn.busy : id === 'wg' ? S.w.busy : false; }
+  function vpnBusy(id) { return id === 'fptn' ? S.fptn.busy : id === 'wg' ? S.w.busy : id === 'vless' ? S.v.busy : false; }
   function vpnConflict(id, quiet) {
     var other = VPNS.filter(function (x) { return x !== id && (S.on[x] || vpnBusy(x)); })[0];
     if (!other) return false;
@@ -1099,6 +1075,221 @@
     var rs = $('#dRestore'); if (rs) rs.disabled = !d.has_snapshot || off;
     var m = $('#dMsg'); if (m) { m.hidden = !d.msg; m.textContent = d.msg; }
   }
+
+  /* VLESS на ядре Xray-core */
+  var VACT = { proxy: 'Через VLESS', direct: 'Напрямую', block: 'Блокировать' };
+  var VKIND = { app: 'Приложение', domain: 'Домен', ip: 'Сеть' };
+  var VHINT = { app: 'chrome.exe', domain: 'example.com', ip: '10.0.0.0/8' };
+  function applyV(st) {
+    var v = S.v;
+    v.profiles = st.profiles || []; v.config = st.config || v.config;
+    v.running = !!st.running; v.tun = !!st.tun; v.dirty = !!st.dirty; v.adapter = !!st.adapter;
+    S.on.vless = v.running;
+    v.socks = String(v.config.socks_port); v.http = String(v.config.http_port); v.dns_text = (v.config.dns || []).join(', ');
+    if (v.view && !v.profiles.some(function (p) { return p.id === v.viewName; })) v.view = '';
+    v.loaded = true;
+  }
+  function vErr(err) { toast(String(err).slice(0, 240), 'warn'); }
+  function vReload() { return inTauri ? T.core.invoke('vless_status').then(applyV).catch(function () {}) : Promise.resolve(); }
+  function vSave() {
+    var v = S.v;
+    if (!inTauri) { renderAll(); return Promise.resolve(); }
+    var c = JSON.parse(JSON.stringify(v.config));
+    c.socks_port = Number(v.socks) || 0; c.http_port = Number(v.http) || 0;
+    c.dns = String(v.dns_text || '').split(/[\s,;]+/).filter(Boolean);
+    return T.core.invoke('vless_config_set', { config: c }).then(applyV).catch(function (err) { vErr(err); return vReload(); }).then(renderAll);
+  }
+  function vApplyNote() { if (S.v.running) toast('Настройки применятся при следующем подключении.'); }
+  function vSetMsg(t) { var m = $('#vlessMsg'); if (m) m.textContent = t; }
+  function vDone(d) { applyV(d.info); vSetMsg(d.message); addLog({ svc: SVC.vless.name, m: d.message, ok: true }); toast(d.message.length > 120 ? d.message.slice(0, 117) + '…' : d.message); }
+  function vImport() {
+    var el = $('#vlessIn'), t = el.value.trim();
+    if (!t) { vSetMsg('Вставьте ссылку vless:// или адрес подписки.'); return; }
+    if (!inTauri) { vSetMsg('Добавление серверов работает в приложении Бунт.'); return; }
+    var one = /^https?:\/\/\S+$/i.test(t);
+    var p;
+    if (one) {
+      var host = ''; try { host = new URL(t).hostname; } catch (e) { host = ''; }
+      p = T.core.invoke('vless_sub_add', { name: host || 'Подписка', url: t });
+    } else p = T.core.invoke('vless_import', { text: t });
+    S.v.busy = true; renderAll();
+    p.then(function (d) { el.value = ''; vDone(d); }).catch(function (err) { vSetMsg(String(err)); vErr(err); }).then(function () { S.v.busy = false; renderAll(); });
+  }
+  function vPick(id) {
+    var v = S.v;
+    if (v.running && v.config.active !== id) { toast('Сначала отключите VLESS, потом выбирайте другой сервер.', 'warn'); return; }
+    T.core.invoke('vless_select', { id: id }).then(applyV).catch(vErr).then(renderAll);
+  }
+  function vDel(id) {
+    var v = S.v;
+    if (v.running && v.config.active === id) { toast('Этот сервер сейчас используется: сначала отключите VLESS.', 'warn'); return; }
+    T.core.invoke('vless_delete', { ids: [id] }).then(applyV).catch(vErr).then(renderAll);
+  }
+  function vView(id) {
+    var v = S.v;
+    if (v.view && v.viewName === id) { v.view = ''; renderAll(); return; }
+    T.core.invoke('vless_profile_view', { id: id }).then(function (t) { v.view = t; v.viewName = id; renderAll(); }).catch(vErr);
+  }
+  function vPing() {
+    var v = S.v;
+    if (!inTauri || v.pinging) return;
+    v.pinging = true; renderAll();
+    T.core.invoke('vless_ping').then(function (r) { v.ping = {}; r.forEach(function (x) { v.ping[x.id] = x.ms; }); }).catch(vErr).then(function () { v.pinging = false; renderAll(); });
+  }
+  function vSubRefresh(id) {
+    if (!inTauri || S.v.busy) return;
+    S.v.busy = true; renderAll();
+    T.core.invoke('vless_sub_refresh', { id: id }).then(vDone).catch(vErr).then(function () { S.v.busy = false; renderAll(); });
+  }
+  function vSubRemove(id) {
+    if (!inTauri || S.v.busy) return;
+    if (!window.confirm('Удалить подписку вместе с её серверами?')) return;
+    T.core.invoke('vless_sub_remove', { id: id }).then(applyV).catch(vErr).then(renderAll);
+  }
+  function vSubAdd() { vImport(); }
+  function vDefault(a) { S.v.config.default_action = a === 'direct' ? 'direct' : 'proxy'; vApplyNote(); vSave(); }
+  function vMode(a) { S.v.config.mode = a === 'proxy' ? 'proxy' : 'tun'; vApplyNote(); vSave(); }
+  function vRuleAdd() {
+    var v = S.v, r = v.rule, val = String(r.value || '').trim();
+    if (!val) { toast('Введите значение правила.', 'warn'); return; }
+    var dup = v.config.rules.some(function (x) { return x.kind === r.kind && x.value === val && x.action === r.action; });
+    if (!dup) v.config.rules.push({ kind: r.kind, value: val, action: r.action });
+    r.value = '';
+    vApplyNote(); vSave();
+  }
+  function vRuleAct(i) {
+    var r = S.v.config.rules[Number(i)];
+    if (!r) return;
+    r.action = r.action === 'proxy' ? 'direct' : r.action === 'direct' ? 'block' : 'proxy';
+    vApplyNote(); vSave();
+  }
+  function vRuleDel(i) { S.v.config.rules.splice(Number(i), 1); vApplyNote(); vSave(); }
+  function vQuick() {
+    var add = [['domain', 'regexp:\\.ru$'], ['domain', 'regexp:\\.su$'], ['domain', 'regexp:\\.xn--p1ai$'], ['ip', 'geoip:ru']];
+    var rules = S.v.config.rules, n = 0;
+    add.forEach(function (a) {
+      if (!rules.some(function (x) { return x.kind === a[0] && x.value === a[1] && x.action === 'direct'; })) { rules.push({ kind: a[0], value: a[1], action: 'direct' }); n++; }
+    });
+    toast(n ? 'Добавлено правил: ' + n + '. Российские сайты пойдут напрямую.' : 'Эти правила уже есть.');
+    vApplyNote(); vSave();
+  }
+  function vProcs() {
+    if (!inTauri) { toast('Список приложений доступен в приложении Бунт.', 'warn'); return; }
+    T.core.invoke('vless_processes').then(function (list) {
+      var h = '<input class="field" id="vProcFilter" placeholder="Поиск по имени" aria-label="Поиск приложения" autocomplete="off"><div class="proc-list" id="vProcList">' +
+        (list.length ? list.map(function (p) { return '<button data-act="vPickProc" data-arg="' + esc(p.name) + '" data-q="' + esc(p.name.toLowerCase()) + '"><b>' + esc(p.name) + '</b><small>' + esc(p.path) + '</small></button>'; }).join('') : '<div class="empty"><span>Запущенных приложений не нашлось.</span></div>') + '</div>';
+      openModal('Запущенные приложения', h, '<button class="btn" data-act="closeModal">Закрыть</button>');
+      var f = $('#vProcFilter'); if (f) f.focus();
+    }).catch(vErr);
+  }
+  function vPickProc(name) {
+    S.v.rule.kind = 'app'; S.v.rule.value = name;
+    closeModal(); renderAll();
+    var e = $('#vRuleVal'); if (e) e.focus();
+  }
+  function vRepair() {
+    if (!inTauri || !installed('vless')) return;
+    if (S.v.config.mode !== 'proxy' && adminNeeded()) return;
+    addLog({ svc: SVC.vless.name, m: 'Восстанавливаем сеть…' });
+    T.core.invoke('vless_repair').then(function (d) {
+      applyV(d.info); S.v.repairMsg = d.message;
+      addLog({ svc: SVC.vless.name, m: d.message, ok: true });
+      toast(d.message);
+    }).catch(function (err) { S.v.repairMsg = String(err); vErr(err); }).then(renderAll);
+  }
+  function vLog() {
+    var v = S.v;
+    v.logOpen = !v.logOpen;
+    if (v.logOpen && inTauri) T.core.invoke('vless_log').then(function (t) { v.log = t || 'Журнал пуст.'; renderAll(); }).catch(function () {});
+    renderAll();
+  }
+  function realVless(on, quiet) {
+    var v = S.v;
+    if (v.busy) return;
+    if (on && vpnConflict('vless', quiet)) return;
+    if (on && v.config.mode !== 'proxy' && adminNeeded(quiet)) return;
+    if (on && !v.config.active) { if (!quiet) { toast('Сначала добавьте сервер и выберите его.', 'warn'); go('vless'); } return; }
+    v.busy = true;
+    var pr = v.profiles.filter(function (p) { return p.id === v.config.active; })[0];
+    addLog({ svc: SVC.vless.name, m: on ? 'Подключаем «' + (pr ? pr.name : '') + '»…' : 'Отключаем и убираем следы в сети…' });
+    renderAll();
+    var p = on
+      ? T.core.invoke('vless_connect', { id: v.config.active }).then(function (st) { applyV(st); addLog({ m: 'VLESS подключён' + (st.tun ? ' (TUN).' : ' (системный прокси).'), ok: true }); })
+      : T.core.invoke('vless_disconnect').then(function (d) { applyV(d.info); v.repairMsg = d.message; addLog({ m: d.message, ok: true }); });
+    p.catch(function (err) {
+      S.on.vless = false;
+      addLog({ svc: SVC.vless.name, m: 'Ошибка: ' + err });
+      if (!quiet || on) toast(String(err).slice(0, 240), 'warn');
+      vReload().then(renderAll);
+    }).then(function () { v.busy = false; if (v.logOpen) T.core.invoke('vless_log').then(function (t) { v.log = t; renderAll(); }).catch(function () {}); renderAll(); });
+  }
+  function watchVless() {
+    if (!inTauri || !installed('vless') || S.v.busy) return;
+    T.core.invoke('vless_status').then(function (st) {
+      var was = S.v.running;
+      applyV(st);
+      if (was && !st.running) addLog({ svc: SVC.vless.name, m: 'Ядро остановилось.' });
+      if (st.dirty && (S.admin !== false || (st.config && st.config.mode === 'proxy'))) {
+        S.v.busy = true;
+        T.core.invoke('vless_repair').then(function (d) { applyV(d.info); S.v.repairMsg = d.message; addLog({ svc: SVC.vless.name, m: 'Бунт восстановил сеть после сбоя. ' + d.message, ok: true }); toast('Сеть после VLESS восстановлена'); })
+          .catch(function () {}).then(function () { S.v.busy = false; renderAll(); });
+      } else renderAll();
+    }).catch(function () {});
+  }
+  function renderVless() {
+    var v = S.v, c = comp('vless'), cfg = v.config;
+    var set = function (id, t) { var e = $(id); if (e) e.textContent = t; };
+    set('#vVer', c.cur || '–');
+    var host = $('#list-vless');
+    if (host) {
+      if (!v.profiles.length) host.innerHTML = '<div class="empty"><span>Серверов пока нет. Вставьте ссылку vless:// или адрес подписки ниже.</span></div>';
+      else host.innerHTML = v.profiles.map(function (p) {
+        var sel = cfg.active === p.id, live = v.running && sel, ms = v.ping[p.id];
+        var sub = p.ok ? p.address + ':' + p.port + ' · ' + p.network + (p.security !== 'none' ? ' · ' + p.security : '') : (p.error || 'Ссылка повреждена');
+        var pg = !(p.id in v.ping) ? '' : ms == null ? '<span class="tag bad">нет ответа</span>' : '<span class="tag ' + (ms < 150 ? 'ok' : 'warn') + '">' + ms + ' мс</span>';
+        return '<div class="prof ' + (sel ? 'sel' : '') + '"><button class="pick" data-act="vPick" data-arg="' + esc(p.id) + '" aria-pressed="' + sel + '"><span class="radio"></span><span class="pn"><b>' + esc(p.name) + '</b><small>' + esc(sub) + '</small></span></button>' +
+          (live ? '<span class="tag ok">включён</span>' : pg) +
+          '<button class="btn sm ghost" data-act="vView" data-arg="' + esc(p.id) + '"' + (p.ok ? '' : ' disabled') + '>Описание</button>' +
+          '<button class="btn sm ghost" data-act="vDel" data-arg="' + esc(p.id) + '" aria-label="Удалить ' + esc(p.name) + '"' + (live ? ' disabled' : '') + '>' + ico('x') + '</button></div>';
+      }).join('');
+    }
+    var vw = $('#vView'); if (vw) { vw.hidden = !v.view; vw.textContent = v.view || ''; }
+    var sb = $('#vSubs');
+    if (sb) sb.innerHTML = !cfg.subs.length ? '<div class="empty"><span>Подписок нет. Вставьте адрес подписки в поле выше.</span></div>' : cfg.subs.map(function (s) {
+      var d = s.updated ? new Date(s.updated * 1000).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '–';
+      return '<div class="prof"><span class="pn" style="flex:1;min-width:0"><b>' + esc(s.name) + '</b><small>Серверов: ' + s.count + ' · обновлена ' + esc(d) + '</small></span>' +
+        '<button class="btn sm" data-act="vSubRefresh" data-arg="' + esc(s.id) + '"' + (v.busy ? ' disabled' : '') + '>Обновить</button>' +
+        '<button class="btn sm ghost" data-act="vSubRemove" data-arg="' + esc(s.id) + '" aria-label="Удалить подписку ' + esc(s.name) + '">' + ico('x') + '</button></div>';
+    }).join('');
+    var rl = $('#vRules');
+    if (rl) rl.innerHTML = !cfg.rules.length ? '<div class="empty"><span>Правил нет: весь трафик идёт по варианту «по умолчанию».</span></div>' : cfg.rules.map(function (r, i) {
+      var cls = r.action === 'proxy' ? 'ok' : r.action === 'block' ? 'bad' : '';
+      return '<div class="rule"><span class="tag">' + esc(VKIND[r.kind] || r.kind) + '</span><span class="rv"><b class="mono">' + esc(r.value) + '</b></span>' +
+        '<button class="tag ' + cls + '" data-act="vRuleAct" data-arg="' + i + '" title="Нажмите, чтобы сменить действие">' + esc(VACT[r.action] || r.action) + '</button>' +
+        '<button class="btn sm ghost" data-act="vRuleDel" data-arg="' + i + '" aria-label="Удалить правило">' + ico('x') + '</button></div>';
+    }).join('');
+    var pp = function (id, on) { var e = $(id); if (e) e.setAttribute('aria-pressed', String(on)); };
+    pp('#vDefProxy', cfg.default_action !== 'direct'); pp('#vDefDirect', cfg.default_action === 'direct');
+    pp('#vModeTun', cfg.mode !== 'proxy'); pp('#vModeProxy', cfg.mode === 'proxy');
+    var tun = cfg.mode !== 'proxy';
+    var pt = $('#vPorts'); if (pt) pt.hidden = tun;
+    var dr = $('#vDnsRow'); if (dr) dr.hidden = !tun;
+    set('#vModeNote', tun ? 'Весь трафик компьютера идёт через виртуальный адаптер, подходит для игр и любых программ. Нужны права администратора.' : 'Включается системный прокси Windows и локальные SOCKS и HTTP. Работает без администратора, но приложения без поддержки прокси пойдут мимо.');
+    var rv = $('#vRuleVal'); if (rv) rv.placeholder = VHINT[v.rule.kind] || '';
+    var sbx = $('#vStatsBox'); if (sbx) sbx.hidden = !v.running;
+    if (v.running) {
+      var pr = v.profiles.filter(function (p) { return p.id === cfg.active; })[0];
+      set('#vRunMode', v.tun ? 'TUN, весь трафик' : 'Системный прокси'); set('#vRunSrv', pr ? pr.name : '–');
+      set('#vRunAd', v.tun ? (v.adapter ? 'Работает' : 'Нет') : 'Не используется');
+    }
+    var d = $('#vDirty'); if (d) d.hidden = !v.dirty;
+    var rm = $('#vRepairMsg'); if (rm) { rm.hidden = !v.repairMsg; rm.textContent = v.repairMsg; }
+    var lg = $('#vLog'); if (lg) { lg.hidden = !v.logOpen; lg.textContent = v.log || ''; }
+    var pb = $('#vPingBtn'); if (pb) pb.disabled = v.pinging || !v.profiles.length;
+    var sw = document.querySelector('.head-sw [data-svc="vless"]'); if (sw) sw.disabled = v.busy;
+    var stt = document.querySelector('[data-state="vless"]');
+    if (stt && v.busy) { stt.className = 'state'; stt.innerHTML = '<span class="spin"></span>Подождите…'; }
+  }
   function restartDiscord() {
     if (!inTauri || !S.on.discord) return;
     realDiscord(true, false);
@@ -1167,36 +1358,6 @@
     step();
   }
 
-  /* профили */
-  function addProfile(t, name, host, ping) {
-    var id = ++S.nextId;
-    S.prof[t].push({ id: id, name: name, host: host, ping: ping == null ? null : ping });
-    renderProfiles(t);
-  }
-  function addVless() {
-    var v = $('#vlessIn').value.trim(), msg = $('#vlessMsg');
-    if (!v) { msg.textContent = 'Вставьте ссылку vless:// или адрес подписки.'; return; }
-    try {
-      var u = new URL(v);
-      if (/^vless:$/i.test(u.protocol)) {
-        var nm = '';
-        try { nm = decodeURIComponent(u.hash.replace(/^#/, '')); } catch (e) { nm = ''; }
-        addProfile('vless', nm || u.hostname, u.hostname, null);
-        msg.textContent = 'Сервер добавлен: ' + (nm || u.hostname) + '.';
-      } else if (/^https?:$/i.test(u.protocol)) {
-        addProfile('vless', 'Подписка · ' + u.hostname, 'Серверы подписки загрузятся при выборе', null);
-        msg.textContent = 'Подписка добавлена.';
-      } else { throw new Error('proto'); }
-      $('#vlessIn').value = '';
-    } catch (e) {
-      msg.textContent = 'Не удалось разобрать ссылку. Проверьте, что она скопирована целиком.';
-    }
-  }
-  function pingAll(t) {
-    S.prof[t].forEach(function (p) { p.ping = 35 + Math.floor(Math.random() * 100); });
-    renderProfiles(t);
-    toast('Пинг обновлён');
-  }
 
   /* обновления */
   var checking = false;
@@ -1248,7 +1409,7 @@
     });
   }
   /* настоящие компоненты внутри Tauri: пока только запрет для Discord и YouTube */
-  var REAL = { discord: true, telegram: true, fptn: true, wg: true };
+  var REAL = { discord: true, telegram: true, fptn: true, wg: true, vless: true };
   function refreshLatest(id) {
     return T.core.invoke('latest_component', { id: id }).then(function (l) {
       var c = comp(id);
@@ -1268,6 +1429,7 @@
       if (id === 'telegram') T.core.invoke('telegram_status').then(function (st) { applyTg(st); renderAll(); }).catch(function () {});
       if (id === 'fptn') T.core.invoke('fptn_status').then(function (st) { applyF(st); renderAll(); }).catch(function () {});
       if (id === 'wg') T.core.invoke('wg_status').then(function (st) { applyW(st); renderAll(); }).catch(function () {});
+      if (id === 'vless') T.core.invoke('vless_status').then(function (st) { applyV(st); renderAll(); }).catch(function () {});
       addLog({ svc: c.name, m: 'Установлено: ' + v + '. Хеш проверен.', ok: true });
       toast(c.name + ' установлен');
       renderAll();
@@ -1282,7 +1444,7 @@
   function reinstallAsk(id) {
     var c = comp(id);
     openModal('Переустановить: ' + c.name,
-      '<p>Файлы будут скачаны с GitHub заново (последняя версия) и заменят установленные. Если запрет был включён, он перезапустится.</p><p class="note">' + (id === 'telegram' ? 'Порт и ссылка для Telegram останутся прежними.' : id === 'fptn' ? 'Токен и настройки FPTN сохранятся. Если VPN был включён, он подключится заново.' : id === 'wg' ? 'Профили и ключи сохранятся. Если туннель был включён, Бунт отключит его на время установки и подключит заново.' : 'Ваши списки доменов и IP сохранятся.') + '</p>',
+      '<p>Файлы будут скачаны с GitHub заново (последняя версия) и заменят установленные. Если запрет был включён, он перезапустится.</p><p class="note">' + (id === 'telegram' ? 'Порт и ссылка для Telegram останутся прежними.' : id === 'fptn' ? 'Токен и настройки FPTN сохранятся. Если VPN был включён, он подключится заново.' : id === 'wg' ? 'Профили и ключи сохранятся. Если туннель был включён, Бунт отключит его на время установки и подключит заново.' : id === 'vless' ? 'Серверы, подписки и правила сохранятся. Если VLESS был включён, Бунт отключит его на время установки и подключит заново.' : 'Ваши списки доменов и IP сохранятся.') + '</p>',
       '<button class="btn" data-act="closeModal">Отмена</button><button class="btn primary" data-act="reinstallDo" data-arg="' + id + '">Переустановить</button>');
   }
   function reinstallDo(id) {
@@ -1298,7 +1460,7 @@
       addLog({ svc: c.name, m: 'Переустановлено: ' + v + '. Хеш проверен.', ok: true });
       toast(c.name + ': переустановлено');
       renderAll();
-      if (was) { if (id === 'telegram') realTelegram(true, true); else if (id === 'fptn') realFptn(true, true); else if (id === 'wg') realWg(true, true); else realDiscord(true, true); }
+      if (was) { if (id === 'telegram') realTelegram(true, true); else if (id === 'fptn') realFptn(true, true); else if (id === 'wg') realWg(true, true); else if (id === 'vless') realVless(true, true); else realDiscord(true, true); }
     }).catch(function (err) {
       c.busy = null; c.stage = null;
       addLog({ svc: c.name, m: 'Ошибка переустановки: ' + err });
@@ -1309,7 +1471,7 @@
   function uninstallAsk(id) {
     var c = comp(id);
     openModal('Удалить: ' + c.name,
-      '<p>Запрет будет остановлен, а все файлы компонента удалены из папки <span class="mono">modules</span>' + (id === 'telegram' ? ', в том числе настройки прокси (порт и секрет). Ссылку в Telegram придётся добавить заново.' : id === 'fptn' ? ', в том числе токен и настройки FPTN. Перед удалением Бунт отключит VPN и вернёт сеть в исходное состояние. Токен придётся ввести заново.' : id === 'wg' ? ', в том числе все профили с ключами. Перед удалением Бунт отключит туннель и вернёт сеть в исходное состояние. Сохраните свои .conf: профили придётся импортировать заново.' : ', в том числе ваши списки доменов и IP.') + '</p><p class="note">Потом его можно установить заново кнопкой «Установить».</p>',
+      '<p>Запрет будет остановлен, а все файлы компонента удалены из папки <span class="mono">modules</span>' + (id === 'telegram' ? ', в том числе настройки прокси (порт и секрет). Ссылку в Telegram придётся добавить заново.' : id === 'fptn' ? ', в том числе токен и настройки FPTN. Перед удалением Бунт отключит VPN и вернёт сеть в исходное состояние. Токен придётся ввести заново.' : id === 'wg' ? ', в том числе все профили с ключами. Перед удалением Бунт отключит туннель и вернёт сеть в исходное состояние. Сохраните свои .conf: профили придётся импортировать заново.' : id === 'vless' ? ', в том числе все серверы, подписки и правила. Перед удалением Бунт отключит VLESS, вернёт системный прокси и сеть в исходное состояние. Ссылки придётся добавить заново.' : ', в том числе ваши списки доменов и IP.') + '</p><p class="note">Потом его можно установить заново кнопкой «Установить».</p>',
       '<button class="btn" data-act="closeModal">Отмена</button><button class="btn danger" data-act="uninstallDo" data-arg="' + id + '">Удалить</button>');
   }
   function uninstallDo(id) {
@@ -1320,6 +1482,7 @@
       c.cur = null; c.next = null; S.on[id] = false;
       if (id === 'telegram') S.telegram.link = '';
       if (id === 'fptn') { S.fptn.tokenSet = false; S.fptn.hint = ''; S.fptn.adapter = { exists: false, status: '', description: '' }; S.fptn.dirty = false; }
+      if (id === 'vless') { S.v.profiles = []; S.v.config.active = ''; S.v.config.subs = []; S.v.config.rules = []; S.v.running = false; S.v.dirty = false; S.v.view = ''; }
       if (id === 'wg') { S.w.profiles = []; S.w.config.active = ''; S.w.running = false; S.w.tunnel = ''; S.w.dirty = false; S.w.adapter = { exists: false, status: '', description: '' }; S.w.view = ''; }
       S.sec.items = [];
       addLog({ svc: c.name, m: 'Компонент удалён.' });
@@ -1485,8 +1648,10 @@
     fAdapter: function (a) { fAdapter(a); }, fTakeOver: function (a) { fTakeOver(a); },
     tgSave: tgSave, tgReset: tgReset, tgSecret: tgSecret,
     copyTg: function () { copyText($('#tgLink').value, 'Ссылка скопирована'); },
-    addVless: addVless,
-    pingAll: function (a) { pingAll(a); },
+    vImport: vImport, vPing: vPing, vRepair: vRepair, vLog: vLog, vQuick: vQuick, vProcs: vProcs, vRuleAdd: vRuleAdd,
+    vPick: function (a) { vPick(a); }, vView: function (a) { vView(a); }, vDel: function (a) { vDel(a); }, vDefault: function (a) { vDefault(a); }, vMode: function (a) { vMode(a); },
+    vRuleAct: function (a) { vRuleAct(a); }, vRuleDel: function (a) { vRuleDel(a); }, vPickProc: function (a) { vPickProc(a); },
+    vSubAdd: vSubAdd, vSubRefresh: function (a) { vSubRefresh(a); }, vSubRemove: function (a) { vSubRemove(a); },
     pickWg: function () { $('#wgFile').click(); },
     dApply: function (a) { dApply(a); }, dApplyCustom: function () { dApply('custom'); }, dReset: function (a) { dReset(a); }, dPing: dPing, dAd: function (a) { dAd(a); },
     vpnSwitch: function (a) { vpnSwitch(a); },
@@ -1517,7 +1682,7 @@
   };
 
   document.addEventListener('click', function (e) {
-    var el = e.target.closest('[data-go],[data-svc],[data-strat],[data-sw],[data-seg] button,[data-act],[data-pick],[data-del],[data-url]');
+    var el = e.target.closest('[data-go],[data-svc],[data-strat],[data-sw],[data-seg] button,[data-act],[data-url]');
     if (!el) return;
     var d = el.dataset;
     if (d.url) { openUrl(d.url); return; }
@@ -1530,6 +1695,7 @@
       if (d.sw === 'tgc.autostart') { tgAutostart(S.tgc.autostart); renderAll(); return; }
       if (d.sw.indexOf('w.config.') === 0) { wSaveConfig(); renderAll(); return; }
       if (d.sw.indexOf('dn.') === 0) { renderAll(); return; }
+      if (d.sw.indexOf('v.config.') === 0) { vApplyNote(); vSave(); return; }
       if (d.sw === 'discord.autoupd') toast(S.discord.autoupd ? 'Автопроверка включена' : 'Автопроверка выключена');
       renderDiscord();
       sync();
@@ -1545,29 +1711,23 @@
       if (seg.dataset.seg === 'discord.ipset') restartDiscord();
       return;
     }
-    if (d.pick) {
-      var a = d.pick.split(':'), t = a[0], id = Number(a[1]);
-      S.sel[t] = id;
-      if (S.on[t]) addLog({ svc: SVC[t].name, m: 'Переключение на ' + selName(t) + '…' });
-      renderAll();
-      return;
-    }
-    if (d.del) {
-      var b = d.del.split(':'), tt = b[0], pid = Number(b[1]);
-      S.prof[tt] = S.prof[tt].filter(function (p) { return p.id !== pid; });
-      if (S.sel[tt] === pid) { S.sel[tt] = null; if (S.on[tt]) setSvc(tt, false, true); }
-      renderAll();
-      return;
-    }
     if (d.act && ACT[d.act]) ACT[d.act](d.arg);
   });
 
   document.addEventListener('change', function (e) {
     var el = e.target;
-    if (el.dataset && el.dataset.bind) { set(el.dataset.bind, el.value); renderAll(); }
+    if (el.dataset && el.dataset.bind) {
+      set(el.dataset.bind, el.value); renderAll();
+      var bn = el.dataset.bind;
+      if (bn.indexOf('v.') === 0 && bn.indexOf('v.rule.') !== 0) { vApplyNote(); vSave(); }
+    }
   });
   document.addEventListener('input', function (e) {
     var el = e.target;
+    if (el && el.id === 'vProcFilter') {
+      var q = el.value.trim().toLowerCase();
+      $$('#vProcList button').forEach(function (b) { b.hidden = !!q && b.dataset.q.indexOf(q) < 0; });
+    }
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') closeModal();
@@ -1575,7 +1735,8 @@
     if (ck) { e.preventDefault(); dAd(ck.dataset.arg); }
   });
   $('#modal').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
-  $('#vlessIn').addEventListener('keydown', function (e) { if (e.key === 'Enter') addVless(); });
+  $('#vlessIn').addEventListener('keydown', function (e) { if (e.key === 'Enter') vImport(); });
+  $('#vRuleVal').addEventListener('keydown', function (e) { if (e.key === 'Enter') { S.v.rule.value = e.target.value; vRuleAdd(); } });
   $('#wgFile').addEventListener('change', function (e) {
     wImportFiles(e.target.files);
     e.target.value = '';
@@ -1634,6 +1795,17 @@
       }
       loadDn();
       setInterval(function () { if (S.page === 'dns' && !S.dn.busy) loadDn(); }, 10000);
+      if (comp('vless').cur) {
+        T.core.invoke('vless_status').then(function (st) {
+          applyV(st);
+          renderAll();
+          if (st.dirty) adminReady.then(function () { watchVless(); });
+          else if (st.running) addLog({ svc: SVC.vless.name, m: 'VLESS уже работал. Бунт подхватил его.', ok: true });
+          else if (st.config && st.config.autoconnect && st.config.active) adminReady.then(function () { realVless(true, true); });
+        }).catch(function () {});
+        var vTick = 0;
+        setInterval(function () { vTick++; if (S.page === 'vless' || S.on.vless || vTick % 3 === 0) watchVless(); }, 5000);
+      }
       if (comp('wg').cur) {
         T.core.invoke('wg_status').then(function (st) {
           applyW(st);

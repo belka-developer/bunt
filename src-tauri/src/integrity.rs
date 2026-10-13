@@ -213,6 +213,16 @@ fn run_check() -> Vec<Item> {
             }
         }
     }
+    if let Ok(dir) = crate::modules::active_dir("vless") {
+        any = true;
+        let label = "VLESS (Xray-core)";
+        out.extend(check_files(label, &dir));
+        if dir.join("wintun.dll").is_file() {
+            if let Some(i) = check_signature(label, "wintun.dll", &dir.join("wintun.dll")) {
+                out.push(i);
+            }
+        }
+    }
     if !any {
         out.push(item("Компоненты", "info", Some("Нет установленных компонентов для проверки.".into())));
     }

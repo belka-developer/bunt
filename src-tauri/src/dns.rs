@@ -284,7 +284,7 @@ fn info(read_sys: bool) -> Info {
         adapters: ads,
         has_snapshot: st.snapshot.is_some(),
         config: st.config,
-        vpn: crate::fptn::is_running() || crate::wg::is_running(),
+        vpn: crate::fptn::is_running() || crate::wg::is_running() || crate::vless::is_running(),
         doh_supported: build >= 22000,
     }
 }
@@ -312,8 +312,8 @@ pub(crate) fn parse_results(text: &str) -> (usize, Vec<String>) {
 
 fn require_free() -> Result<(), String> {
     crate::fptn::require_admin()?;
-    if crate::fptn::is_running() || crate::wg::is_running() {
-        return Err("Сейчас включён VPN (FPTN или WireGuard): он сам управляет DNS. Отключите его, затем меняйте DNS.".into());
+    if crate::fptn::is_running() || crate::wg::is_running() || crate::vless::is_running() {
+        return Err("Сейчас включён VPN (FPTN, WireGuard или VLESS): он сам управляет DNS. Отключите его, затем меняйте DNS.".into());
     }
     Ok(())
 }
