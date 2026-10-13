@@ -42,6 +42,7 @@
     telegram: { port: '1443', link: '' },
     fc: { token_in: '', bypass_method: 'sni-spoofing-yandex-26-4', strategy: 'rolling-tunnel', sni: 'google.com', mtu: '1420', preferred_server: '', tun_name: 'FPTN', tun_ip: '10.0.0.1', exclude_networks: '10.0.0.0/8,192.168.0.0/16', include_networks: '', split: false, split_mode: 'exclude', split_domains: '', adblock: true, blacklist: '', auto_gateway: true, remove_adapter: true, autostart: false },
     fptn: { tokenSet: false, hint: '', servers: [], tokenError: '', adapter: { exists: false, status: '', description: '' }, dirty: false, busy: false, repairMsg: '', logOpen: false, log: '' },
+    dn: { presets: [], adapters: [], active: '', has_snapshot: false, config: { last: '', custom: ['', ''], ipv6: true, doh: false }, vpn: false, doh_supported: false, busy: false, loaded: false, off: [], ping: {}, pinging: false, c1: '', c2: '', msg: '' },
     w: { profiles: [], config: { active: '', autoconnect: false, keep_on_exit: false, split_default: true }, running: false, tunnel: '', dirty: false, adapter: { exists: false, status: '', description: '' }, stats: { handshake_ago: null, rx: 0, tx: 0 }, busy: false, repairMsg: '', logOpen: false, log: '', paste: false, imp_name: 'wg0', imp_text: '', view: '', viewName: '' },
     tgc: { autostart: false, host: '127.0.0.1', port: '1443', secret: '', dc_ip: '2:149.154.167.220\n4:149.154.167.220', verbose: false, buf_kb: '256', pool_size: '4', log_max_mb: '5', cfproxy: true, h2: true, cf_domain_on: false, cf_domain: '', cf_worker_on: false, cf_worker: '', force_test_dc: false, no_secure: false, fake_tls_domain: '' },
     lists: {
@@ -174,7 +175,7 @@
       ['tunnel', 'FPTN' + (installed('fptn') ? (S.on.fptn ? ' · подключён' : ' · отключён') : ''), 'fptn'],
       ['net', 'VLESS · скоро', null],
       ['vpn', 'WireGuard / AmneziaWG' + (installed('wg') ? (S.on.wg ? ' · подключён' : ' · отключён') : ''), 'wg'],
-      ['globe', 'DNS · скоро', null],
+      ['globe', 'DNS' + (S.dn.loaded && S.dn.active ? ' · ' + (DN_ACTIVE[S.dn.active] || (S.dn.presets.filter(function (p) { return p.id === S.dn.active; })[0] || {}).name || '') : ''), 'dns'],
       null,
       ['download', 'Обновления', 'updates'],
       ['sliders', 'Настройки', 'settings']
@@ -399,13 +400,14 @@
 
   function renderAll() {
     renderSide(); renderCards(); renderTray(); renderHeads(); renderLog();
-    renderInstall(); renderDiscord(); renderTelegram(); renderFptn(); renderWg(); renderProfiles('vless');
+    renderInstall(); renderDiscord(); renderTelegram(); renderFptn(); renderWg(); renderDn(); renderProfiles('vless');
     renderVersions(); renderNotes(); renderSecurity(); renderAdmin(); sync(); syncTray();
   }
 
   function go(page) {
     if (PAGES.indexOf(page) < 0) page = 'home';
     S.page = page;
+    if (page === 'dns') loadDn();
     $$('[data-page]').forEach(function (s) { s.hidden = s.dataset.page !== page; });
     $$('.nav').forEach(function (n) { if (n.dataset.go === page) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current'); });
     try { history.replaceState(null, '', '#' + page); } catch (e) { /* без адреса */ }
@@ -1001,6 +1003,102 @@
     var stt = document.querySelector('[data-state="wg"]');
     if (stt && w.busy) { stt.className = 'state'; stt.innerHTML = '<span class="spin"></span>Подождите…'; }
   }
+
+  /* DNS */
+  var DN_ACTIVE = { auto: 'Автоматически', custom: 'Свои адреса', mixed: 'По-разному на адаптерах' };
+  function applyDn(st) {
+    var d = S.dn, first = !d.loaded;
+    d.presets = st.presets || d.presets; d.adapters = st.adapters || []; d.active = st.active || '';
+    d.has_snapshot = !!st.has_snapshot; d.config = st.config || d.config; d.vpn = !!st.vpn; d.doh_supported = !!st.doh_supported;
+    d.off = d.off.filter(function (i) { return d.adapters.some(function (a) { return a.index === i; }); });
+    if (first) { d.c1 = (d.config.custom || [])[0] || ''; d.c2 = (d.config.custom || [])[1] || ''; }
+    d.loaded = true;
+  }
+  function loadDn() {
+    if (!inTauri || S.dn.busy) return Promise.resolve();
+    return T.core.invoke('dns_status').then(function (st) { applyDn(st); renderAll(); }).catch(function () {});
+  }
+  function dnSel() { return S.dn.adapters.filter(function (a) { return S.dn.off.indexOf(a.index) < 0; }).map(function (a) { return a.index; }); }
+  function dAd(i) {
+    i = Number(i);
+    var o = S.dn.off, k = o.indexOf(i);
+    if (k < 0) o.push(i); else o.splice(k, 1);
+    renderAll();
+  }
+  function dnDone(d) {
+    applyDn(d.info); S.dn.msg = d.message;
+    addLog({ svc: 'DNS', m: d.message, ok: true });
+    toast(d.message.length > 120 ? d.message.slice(0, 117) + '…' : d.message);
+  }
+  function dnRun(call, text) {
+    var d = S.dn;
+    d.busy = true; d.msg = ''; addLog({ svc: 'DNS', m: text }); renderAll();
+    call.then(dnDone).catch(function (err) { d.msg = String(err); addLog({ svc: 'DNS', m: 'Ошибка: ' + err }); toast(String(err).slice(0, 240), 'warn'); })
+      .then(function () { d.busy = false; renderAll(); loadDn(); });
+  }
+  function dApply(id) {
+    var d = S.dn;
+    if (!inTauri) { toast('Смена DNS работает в приложении Бунт.', 'warn'); return; }
+    if (d.busy || adminNeeded()) return;
+    if (d.vpn) { toast('Сначала отключите VPN: он сам управляет DNS.', 'warn'); return; }
+    var sel = dnSel();
+    if (!sel.length) { toast('Отметьте хотя бы один адаптер.', 'warn'); return; }
+    var custom = [];
+    if (id === 'custom') {
+      custom = [d.c1.trim(), d.c2.trim()].filter(Boolean);
+      if (!custom.length) { toast('Введите адрес DNS-сервера, например 1.1.1.1.', 'warn'); return; }
+    }
+    var pr = d.presets.filter(function (p) { return p.id === id; })[0];
+    dnRun(T.core.invoke('dns_apply', { req: { preset: id, custom: custom, adapters: sel, ipv6: !!d.config.ipv6, doh: !!d.config.doh } }),
+      'Меняем DNS на ' + (pr ? pr.name : 'свои адреса') + '…');
+  }
+  function dReset(mode) {
+    var d = S.dn;
+    if (!inTauri || d.busy || adminNeeded()) return;
+    if (d.vpn) { toast('Сначала отключите VPN: он сам управляет DNS.', 'warn'); return; }
+    if (mode === 'restore' && !d.has_snapshot) { toast('Бунт ещё не менял DNS: возвращать нечего.', 'warn'); return; }
+    dnRun(T.core.invoke('dns_reset', { mode: mode }), mode === 'restore' ? 'Возвращаем прежние настройки DNS…' : 'Возвращаем автоматический DNS…');
+  }
+  function dPing() {
+    var d = S.dn;
+    if (!inTauri || d.pinging) return;
+    d.pinging = true; renderAll();
+    T.core.invoke('dns_ping').then(function (r) {
+      d.ping = {};
+      r.forEach(function (x) { d.ping[x.id] = x.ms; });
+      var best = r.filter(function (x) { return x.ms != null; }).sort(function (a, b) { return a.ms - b.ms; })[0];
+      if (best) { var p = d.presets.filter(function (q) { return q.id === best.id; })[0]; toast('Быстрее всех отвечает ' + (p ? p.name : best.id) + ': ' + best.ms + ' мс.'); }
+      else toast('Ни один сервер не ответил. Проверьте подключение к сети.', 'warn');
+    }).catch(function (e) { toast(String(e).slice(0, 200), 'warn'); }).then(function () { d.pinging = false; renderAll(); });
+  }
+  function renderDn() {
+    var d = S.dn;
+    var set = function (id, v) { var e = $(id); if (e) e.textContent = v; };
+    var pn = d.presets.filter(function (p) { return p.id === d.active; })[0];
+    set('#dNow', !inTauri || !d.loaded ? 'DNS: нет данных' : 'Сейчас: ' + (pn ? pn.name : DN_ACTIVE[d.active] || '–'));
+    var off = d.busy || d.vpn;
+    var g = $('#dGrid');
+    if (g) {
+      g.innerHTML = !d.presets.length ? '<div class="empty"><span>' + (inTauri ? 'Загружаем список…' : 'Список серверов доступен в приложении Бунт.') + '</span></div>' : d.presets.map(function (p) {
+        var ms = d.ping[p.id], pg = !(p.id in d.ping) ? '' : ms == null ? '<span class="tag bad">нет ответа</span>' : '<span class="tag ok">' + ms + ' мс</span>';
+        return '<button class="dns-card ' + (d.active === p.id ? 'sel' : '') + '" data-act="dApply" data-arg="' + esc(p.id) + '"' + (off ? ' disabled' : '') + '><span class="dn"><span>' + esc(p.name) + '</span>' + pg + '</span><small>' + esc(p.desc) + '</small><span class="mono">' + esc(p.v4.join('  ·  ')) + '</span></button>';
+      }).join('');
+    }
+    var ad = $('#dAdapters');
+    if (ad) {
+      ad.innerHTML = !d.adapters.length ? '<div class="empty"><span>' + (d.loaded ? 'Активных сетевых адаптеров не найдено.' : 'Нет данных') + '</span></div>' : d.adapters.map(function (a) {
+        var on = d.off.indexOf(a.index) < 0;
+        return '<div class="dns-ad" role="checkbox" tabindex="0" aria-checked="' + on + '" data-act="dAd" data-arg="' + a.index + '"><input type="checkbox" tabindex="-1" aria-hidden="true" style="pointer-events:none"' + (on ? ' checked' : '') + '><span><b>' + esc(a.name) + '</b><small>' + esc(a.desc) + '</small><small class="mono">' + esc(a.v4.join(', ') || 'нет адресов') + (a.stat ? ' · вручную' : ' · от роутера') + '</small></span></div>';
+      }).join('');
+    }
+    var v = $('#dVpn'); if (v) v.hidden = !d.vpn;
+    var cb = $('#dCustomBtn'); if (cb) cb.disabled = off;
+    var pb = $('#dPingBtn'); if (pb) { pb.disabled = d.pinging; pb.textContent = d.pinging ? 'Проверяем…' : 'Проверить скорость'; }
+    var dr = $('#dDohRow'); if (dr) dr.style.opacity = d.doh_supported || !d.loaded ? '' : '.5';
+    var sn = $('#dSnapNote'); if (sn) sn.textContent = d.has_snapshot ? 'Бунт запомнил DNS, который стоял до первой смены' : 'Появятся после первой смены DNS';
+    var rs = $('#dRestore'); if (rs) rs.disabled = !d.has_snapshot || off;
+    var m = $('#dMsg'); if (m) { m.hidden = !d.msg; m.textContent = d.msg; }
+  }
   function restartDiscord() {
     if (!inTauri || !S.on.discord) return;
     realDiscord(true, false);
@@ -1390,6 +1488,7 @@
     addVless: addVless,
     pingAll: function (a) { pingAll(a); },
     pickWg: function () { $('#wgFile').click(); },
+    dApply: function (a) { dApply(a); }, dApplyCustom: function () { dApply('custom'); }, dReset: function (a) { dReset(a); }, dPing: dPing, dAd: function (a) { dAd(a); },
     vpnSwitch: function (a) { vpnSwitch(a); },
     wPaste: function () { S.w.paste = !S.w.paste; renderAll(); },
     wImportText: wImportText, wRepair: wRepair, wLog: wLog,
@@ -1430,6 +1529,7 @@
       if (d.sw === 'discord.game') addLog({ svc: 'Zapret (Discord)', m: 'Game Filter: ' + (S.discord.game ? 'включён' : 'выключен') + '. Нужен перезапуск стратегии.' });
       if (d.sw === 'tgc.autostart') { tgAutostart(S.tgc.autostart); renderAll(); return; }
       if (d.sw.indexOf('w.config.') === 0) { wSaveConfig(); renderAll(); return; }
+      if (d.sw.indexOf('dn.') === 0) { renderAll(); return; }
       if (d.sw === 'discord.autoupd') toast(S.discord.autoupd ? 'Автопроверка включена' : 'Автопроверка выключена');
       renderDiscord();
       sync();
@@ -1469,7 +1569,11 @@
   document.addEventListener('input', function (e) {
     var el = e.target;
   });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeModal();
+    var ck = (e.key === 'Enter' || e.key === ' ') && e.target.closest && e.target.closest('.dns-ad');
+    if (ck) { e.preventDefault(); dAd(ck.dataset.arg); }
+  });
   $('#modal').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
   $('#vlessIn').addEventListener('keydown', function (e) { if (e.key === 'Enter') addVless(); });
   $('#wgFile').addEventListener('change', function (e) {
@@ -1528,6 +1632,8 @@
         }).catch(function () {});
         setInterval(watchFptn, 15000);
       }
+      loadDn();
+      setInterval(function () { if (S.page === 'dns' && !S.dn.busy) loadDn(); }, 10000);
       if (comp('wg').cur) {
         T.core.invoke('wg_status').then(function (st) {
           applyW(st);

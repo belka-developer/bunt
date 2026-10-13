@@ -63,7 +63,7 @@
             <button class="nav" data-go="telegram"><svg class="ic"><use href="#i-plane"/></svg>Zapret (Telegram)</button>
             <button class="nav" data-go="vless"><svg class="ic"><use href="#i-net"/></svg>VLESS<span class="soon-tag">скоро</span></button>
             <button class="nav" data-go="wg"><svg class="ic"><use href="#i-vpn"/></svg>WireGuard</button>
-            <button class="nav" data-go="dns"><svg class="ic"><use href="#i-globe"/></svg>DNS<span class="soon-tag">скоро</span></button>
+            <button class="nav" data-go="dns"><svg class="ic"><use href="#i-globe"/></svg>DNS</button>
             <button class="nav" data-go="fptn"><svg class="ic"><use href="#i-tunnel"/></svg>FPTN</button>
             <button class="nav" data-go="security"><svg class="ic"><use href="#i-shield"/></svg>Безопасность</button>
             <button class="nav" data-go="updates"><svg class="ic"><use href="#i-download"/></svg>Обновления<span class="nav-dot" id="navDot" hidden></span></button>
@@ -347,12 +347,47 @@
           </section>
 
           <!-- Безопасность -->
-          <section data-page="dns" data-soon hidden>
-            <div class="soon">
-              <span class="badge b-dns"><svg class="ic"><use href="#i-globe"/></svg></span>
-              <span class="tag warn">Скоро</span>
-              <h1>DNS</h1>
-              <p class="sub">Здесь появится быстрая смена DNS и безопасный DNS для всех подключений. Раздел в разработке.</p>
+          <section data-page="dns" hidden>
+            <div class="page-head">
+              <div>
+                <h1>DNS</h1>
+                <p class="sub">Быстрая смена DNS-серверов в Windows: Cloudflare, Google, Quad9 и другие. Бунт запоминает прежние настройки, их можно вернуть одной кнопкой.</p>
+              </div>
+              <div class="head-sw"><span class="tag" id="dNow">…</span></div>
+            </div>
+            <div id="dVpn" class="sec-fix" hidden><span>Сейчас включён VPN (FPTN или WireGuard): он сам управляет DNS. Отключите его, чтобы менять DNS здесь.</span></div>
+            <div class="cols">
+              <div class="stack">
+                <div class="panel">
+                  <div class="panel-head"><h3>Выберите сервер</h3><button class="btn sm" data-act="dPing" id="dPingBtn">Проверить скорость</button></div>
+                  <div class="dns-grid" id="dGrid"></div>
+                  <p class="note mt-s">Скорость показывает, за сколько сервер отвечает вам. Чем меньше миллисекунд, тем лучше. Без включённого VPN результат точнее.</p>
+                </div>
+                <div class="panel">
+                  <h3>Свои адреса</h3>
+                  <div class="row"><span class="lbl">Основной<small>Например, 1.1.1.1</small></span><input class="field mono" data-bind="dn.c1" spellcheck="false" aria-label="Основной DNS" style="width:190px" placeholder="1.1.1.1"></div>
+                  <div class="row"><span class="lbl">Запасной<small>Не обязателен</small></span><input class="field mono" data-bind="dn.c2" spellcheck="false" aria-label="Запасной DNS" style="width:190px" placeholder="1.0.0.1"></div>
+                  <div class="row" style="justify-content:flex-end"><button class="btn primary" data-act="dApplyCustom" id="dCustomBtn">Применить свои</button></div>
+                </div>
+              </div>
+              <div class="stack">
+                <div class="panel">
+                  <h3>Адаптеры</h3>
+                  <div id="dAdapters"></div>
+                  <p class="note mt-s">DNS меняется на отмеченных адаптерах. Виртуальные (VPN, Hyper-V, Radmin) Бунт не трогает.</p>
+                </div>
+                <div class="panel">
+                  <h3>Параметры</h3>
+                  <div class="row"><div class="lbl">Менять и IPv6<small>Если у сервера есть IPv6-адреса, они тоже будут заданы</small></div><button class="sw" role="switch" data-sw="dn.config.ipv6" aria-label="Менять и IPv6"></button></div>
+                  <div class="row" id="dDohRow"><div class="lbl">Шифрование DoH<small>Только Windows 11 и серверы с поддержкой. Запросы идут по HTTPS, провайдер их не видит</small></div><button class="sw" role="switch" data-sw="dn.config.doh" aria-label="Шифрование DoH"></button></div>
+                </div>
+                <div class="panel">
+                  <h3>Вернуть как было</h3>
+                  <div class="row"><div class="lbl">Автоматически<small>Адреса DNS выдаёт роутер или провайдер</small></div><button class="btn sm" data-act="dReset" data-arg="auto">Автоматически</button></div>
+                  <div class="row"><div class="lbl">Настройки до Бунта<small id="dSnapNote">Появятся после первой смены DNS</small></div><button class="btn sm" data-act="dReset" data-arg="restore" id="dRestore">Вернуть</button></div>
+                  <p class="note mt-s" id="dMsg" hidden></p>
+                </div>
+              </div>
             </div>
           </section>
 

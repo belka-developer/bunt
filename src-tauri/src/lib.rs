@@ -9,6 +9,7 @@ mod modules;
 mod settings;
 mod fptn;
 mod wg;
+mod dns;
 mod vcredist;
 mod telegram;
 mod zapret;
@@ -129,7 +130,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let discord = MenuItem::with_id(app, "go:discord", "Запрет Discord и YouTube", true, None::<&str>)?;
     let telegram = MenuItem::with_id(app, "go:telegram", "Запрет Telegram", true, None::<&str>)?;
     let vless = MenuItem::with_id(app, "go:vless", "VLESS · скоро", false, None::<&str>)?;
-    let dns = MenuItem::with_id(app, "go:dns", "DNS · скоро", false, None::<&str>)?;
+    let dns = MenuItem::with_id(app, "go:dns", "DNS", true, None::<&str>)?;
     let fptn = MenuItem::with_id(app, "go:fptn", "FPTN", true, None::<&str>)?;
     let wg = MenuItem::with_id(app, "go:wg", "WireGuard / AmneziaWG", true, None::<&str>)?;
     let updates = MenuItem::with_id(app, "go:updates", "Обновления", true, None::<&str>)?;
@@ -259,7 +260,11 @@ pub fn run() {
             wg::wg_select,
             wg::wg_config_set,
             wg::wg_adapter,
-            wg::wg_log
+            wg::wg_log,
+            dns::dns_status,
+            dns::dns_apply,
+            dns::dns_reset,
+            dns::dns_ping
         ])
         .on_window_event(|window, event| {
             if window.label() != "main" {
