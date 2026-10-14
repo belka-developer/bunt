@@ -1012,6 +1012,19 @@
     call.then(dnDone).catch(function (err) { d.msg = String(err); addLog({ svc: 'DNS', m: 'Ошибка: ' + err }); toast(String(err).slice(0, 240), 'warn'); })
       .then(function () { d.busy = false; renderAll(); loadDn(); });
   }
+  /* тумблер: включить выбранный DNS или вернуть автоматический */
+  function dnOn() { var a = S.dn.active; return !!a && a !== 'auto'; }
+  function dToggle() {
+    var d = S.dn;
+    if (!inTauri) { toast('Смена DNS работает в приложении Бунт.', 'warn'); return; }
+    if (d.busy) return;
+    if (d.vpn) { toast('Сначала отключите VPN: он сам управляет DNS.', 'warn'); return; }
+    if (dnOn()) { dReset('auto'); return; }
+    var last = (d.config && d.config.last) || '';
+    var known = d.presets.some(function (p) { return p.id === last; });
+    if (last === 'custom' && (d.c1 || '').trim()) { dApply('custom'); return; }
+    dApply(known ? last : (d.presets[0] ? d.presets[0].id : 'cloudflare'));
+  }
   function dApply(id) {
     var d = S.dn;
     if (!inTauri) { toast('Смена DNS работает в приложении Бунт.', 'warn'); return; }
@@ -1053,6 +1066,13 @@
     var pn = d.presets.filter(function (p) { return p.id === d.active; })[0];
     set('#dNow', !inTauri || !d.loaded ? 'DNS: нет данных' : 'Сейчас: ' + (pn ? pn.name : DN_ACTIVE[d.active] || '–'));
     var off = d.busy || d.vpn;
+    var on = dnOn(), sw = $('#dSw');
+    if (sw) { sw.setAttribute('aria-checked', String(on)); sw.disabled = off || !d.loaded; }
+    var stt = $('#dState');
+    if (stt) {
+      if (d.busy) { stt.className = 'state'; stt.innerHTML = '<span class="spin"></span>Подождите…'; }
+      else { stt.className = 'state ' + (on ? 'on' : ''); stt.innerHTML = on ? '<i class="dot"></i>Включён' : 'Автоматически'; }
+    }
     var g = $('#dGrid');
     if (g) {
       g.innerHTML = !d.presets.length ? '<div class="empty"><span>' + (inTauri ? 'Загружаем список…' : 'Список серверов доступен в приложении Бунт.') + '</span></div>' : d.presets.map(function (p) {
@@ -1653,7 +1673,7 @@
     vRuleAct: function (a) { vRuleAct(a); }, vRuleDel: function (a) { vRuleDel(a); }, vPickProc: function (a) { vPickProc(a); },
     vSubAdd: vSubAdd, vSubRefresh: function (a) { vSubRefresh(a); }, vSubRemove: function (a) { vSubRemove(a); },
     pickWg: function () { $('#wgFile').click(); },
-    dApply: function (a) { dApply(a); }, dApplyCustom: function () { dApply('custom'); }, dReset: function (a) { dReset(a); }, dPing: dPing, dAd: function (a) { dAd(a); },
+    dToggle: function () { dToggle(); }, dApply: function (a) { dApply(a); }, dApplyCustom: function () { dApply('custom'); }, dReset: function (a) { dReset(a); }, dPing: dPing, dAd: function (a) { dAd(a); },
     vpnSwitch: function (a) { vpnSwitch(a); },
     wPaste: function () { S.w.paste = !S.w.paste; renderAll(); },
     wImportText: wImportText, wRepair: wRepair, wLog: wLog,

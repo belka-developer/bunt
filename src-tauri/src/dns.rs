@@ -427,7 +427,10 @@ fn reset_blocking(mode: &str) -> Result<Done, String> {
     if mode == "restore" {
         st.snapshot = None;
     }
-    st.config.last = String::new();
+    // «Автоматически» оставляет последний выбор: тумблер в интерфейсе включит его обратно
+    if mode == "restore" {
+        st.config.last = String::new();
+    }
     save(&st)?;
     Ok(Done { info: info(true), message: msg })
 }
