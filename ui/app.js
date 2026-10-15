@@ -32,13 +32,21 @@
     return { f: s ? 'general (' + s + ')' : 'general', t: s || 'general', g: g };
   });
   var STRATS = STRAT_DEFS.map(function (s) { return s.f; });
-  var INIT_SCORES = [2, 4, 6, 3, 2, 5, 4, 3, 1, 5, 4, 3, 5, 2, 3, 4, 5, 4, 3, 1, 2, 5];
-  var scanning = null, flash = null, testing = false;
+  /* что проверяем (то же, что в zapret.rs): нужен, чтобы показать строки до первой проверки */
+  var TARGETS = [
+    { id: 'discord', label: 'Discord', host: 'discord.com' },
+    { id: 'gateway', label: 'Discord: чат и голос', host: 'gateway.discord.gg' },
+    { id: 'cdn', label: 'Discord: картинки', host: 'cdn.discordapp.com' },
+    { id: 'youtube', label: 'YouTube', host: 'www.youtube.com' },
+    { id: 'ytimg', label: 'YouTube: превью', host: 'i.ytimg.com' },
+    { id: 'video', label: 'YouTube: видео', host: 'redirector.googlevideo.com' }
+  ];
+  var scanning = null, flash = null, testing = false, probing = false, testRan = [], testCancel = false;
 
   var S = {
     page: 'home',
     on: { discord: false, telegram: false, fptn: false, vless: false, wg: false },
-    discord: { mode: 'auto', strategy: 'general (ALT2)', game: false, ipset: 'none', lastTest: 'сегодня, 14:32', autoupd: true, ipsetUpdated: 'сегодня, 09:12' },
+    discord: { mode: 'auto', strategy: 'general (ALT2)', game: false, ipset: 'none', results: {}, free: null, autoupd: true, ipsetUpdated: 'сегодня, 09:12' },
     telegram: { port: '1443', link: '' },
     fc: { token_in: '', bypass_method: 'sni-spoofing-yandex-26-4', strategy: 'rolling-tunnel', sni: 'google.com', mtu: '1420', preferred_server: '', tun_name: 'FPTN', tun_ip: '10.0.0.1', exclude_networks: '10.0.0.0/8,192.168.0.0/16', include_networks: '', split: false, split_mode: 'exclude', split_domains: '', adblock: true, blacklist: '', auto_gateway: true, remove_adapter: true, autostart: false },
     fptn: { tokenSet: false, hint: '', servers: [], tokenError: '', adapter: { exists: false, status: '', description: '' }, dirty: false, busy: false, repairMsg: '', logOpen: false, log: '' },
@@ -72,14 +80,6 @@
       { id: 'wg', name: 'WireGuard / AmneziaWG', cur: null, latest: '3.1.0', next: null, cls: 'b-wg', icon: 'vpn', size: '3.5 МБ', src: 'amnezia-vpn/amneziawg-windows-client (GitHub)', sha: '–', notes: [], busy: null }
     ],
     lastCheck: 'сегодня, 14:45',
-    targets: [
-      { host: 'discord.com', ms: 84, ok: true },
-      { host: 'gateway.discord.gg', ms: 112, ok: true },
-      { host: 'cdn.discordapp.com', ms: 97, ok: true },
-      { host: 'youtube.com', ms: 76, ok: true },
-      { host: 'googlevideo.com', ms: 131, ok: true },
-      { host: 'i.ytimg.com', ms: 88, ok: true }
-    ],
     sec: { running: false, last: nowShort(), items: [
       { t: 'Проверка хешей файлов', st: 'ok' },
       { t: 'Проверка цифровой подписи', st: 'ok' },
@@ -196,11 +196,16 @@
   function renderDiscord() {
     var d = S.discord;
     $('#stratNow').textContent = d.strategy;
-    $('#stratWhen').textContent = (d.mode === 'auto' ? 'Подобрана автоматически · ' : 'Выбрана вручную · последняя проверка: ') + d.lastTest;
+    var cr = d.results[d.strategy];
+    $('#stratWhen').textContent = (d.mode === 'auto' ? 'Подобрана автоматически' : 'Выбрана вручную') + ' · ' +
+      (cr && !cr.error ? 'проверена ' + fmtAt(cr.at) + ': открывается ' + okCount(cr) + ' из ' + TARGETS.length : cr ? 'не запустилась при проверке' : 'ещё не проверялась');
+    $('#btnTest').disabled = testing;
+    $('#btnCheck').disabled = testing;
+    $('#btnCancel').hidden = !testing;
+    $('#btnProbe').disabled = testing || probing;
     $('#stratLine').hidden = testing;
     $('#stratWhen').hidden = testing;
     $('#testBox').hidden = !testing;
-    $('#lastTest').textContent = d.lastTest;
     $('#ipsetWarn').hidden = d.ipset !== 'any';
     $('#ipsetDesc').textContent = { none: 'none: IP-адреса не проверяются', loaded: 'loaded: IP проверяется по списку ipset-all.txt', any: 'any: любой IP попадает под фильтр' }[d.ipset];
     $('#ipsetUpd').textContent = d.ipsetUpdated;
@@ -211,18 +216,79 @@
       return '<div class="row"><div class="lbl">' + l.title + '<small class="mono">' + l.file + '</small></div><div class="inl"><span class="tag">записей: ' + n + '</span><button class="btn sm" data-act="editList" data-arg="' + k + '">Редактировать</button></div></div>';
     }).join('');
     $('#strats').innerHTML = STRAT_DEFS.map(function (s) {
-      var sc = d.scores[s.f], cur = d.strategy === s.f;
+      var r = d.results[s.f], cur = d.strategy === s.f;
       var cls = (cur ? 'cur ' : '') + (scanning === s.f ? 'scan ' : '') + (flash === s.f ? 'win' : '');
-      var tag = sc == null ? '<span class="tag">–</span>' : '<span class="tag ' + (sc === 6 ? 'ok' : sc >= 4 ? 'warn' : 'bad') + '">' + sc + '/6</span>';
       return '<button class="strat ' + cls + '" data-strat="' + esc(s.f) + '" aria-pressed="' + cur + '">' +
-        '<span class="shd"><span class="sg">' + s.g + '</span>' + tag + '</span>' +
+        '<span class="shd"><span class="sg">' + s.g + '</span>' + stratTag(r) + '</span>' +
         '<span class="sn">' + (cur ? ico('check') : '') + esc(s.t) + '</span>' +
         '<span class="sf">' + esc(s.f) + '.bat</span></button>';
     }).join('');
-    $('#targets').innerHTML = S.targets.map(function (t) {
-      return '<div class="tgt"><span class="mono">' + t.host + '</span><span class="ms">' + (t.ok ? t.ms + ' мс' : '') + '</span><span class="tag ' + (t.ok ? 'ok' : 'bad') + '">' + (t.ok ? 'Открывается' : 'Недоступен') + '</span></div>';
-    }).join('');
+    var free = !S.on.discord && d.free && (!cr || d.free.at >= cr.at) ? d.free : null;
+    var src = free || cr;
+    $('#tgtWho').textContent = free ? 'Без запрета · проверено ' + fmtAt(free.at)
+      : cr ? 'Стратегия ' + d.strategy + ' · проверено ' + fmtAt(cr.at) + (S.on.discord ? '' : ' · запрет сейчас выключен')
+      : 'Для стратегии ' + d.strategy + ' проверок ещё не было. Нажмите «Проверить» или «Проверить стратегии».';
+    if (src && src.error) {
+      $('#targets').innerHTML = '<p class="note warn">Не удалось запустить стратегию: ' + esc(src.error) + '</p>';
+    } else {
+      var byId = {};
+      (src ? src.checks : []).forEach(function (c) { byId[c.id] = c; });
+      $('#targets').innerHTML = TARGETS.map(function (t) {
+        var c = byId[t.id];
+        return '<div class="tgt"><span class="tl">' + esc(t.label) + '<small class="mono">' + t.host + '</small></span>' +
+          '<span class="ms">' + (c && c.ok ? c.ms + ' мс' : '') + '</span>' +
+          (c ? '<span class="tag ' + (c.ok ? 'ok' : 'bad') + '">' + (c.ok ? 'Открывается' : 'Недоступен') + '</span>' : '<span class="tag">–</span>') + '</div>';
+      }).join('');
+    }
   }
+
+  /* результаты проверки стратегий */
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function fmtAt(sec) {
+    if (!sec) return '';
+    var dt = new Date(sec * 1000), n = new Date(), t = pad2(dt.getHours()) + ':' + pad2(dt.getMinutes());
+    if (dt.toDateString() === n.toDateString()) return 'сегодня, ' + t;
+    return pad2(dt.getDate()) + '.' + pad2(dt.getMonth() + 1) + ', ' + t;
+  }
+  function okCount(r) { return r.checks.filter(function (c) { return c.ok; }).length; }
+  function avgMs(r) {
+    var v = r.checks.filter(function (c) { return c.ok; }).map(function (c) { return c.ms; });
+    return v.length ? v.reduce(function (a, b) { return a + b; }, 0) / v.length : 1e9;
+  }
+  function stratTag(r) {
+    if (!r) return '<span class="tw"><span class="tag">–</span><span class="tip" role="tooltip"><span class="tn">Эту стратегию ещё не проверяли</span></span></span>';
+    if (r.error) return '<span class="tw"><span class="tag bad">ошибка</span><span class="tip" role="tooltip"><span class="tn">' + esc(r.error) + '</span></span></span>';
+    var n = okCount(r), total = r.checks.length;
+    var rows = r.checks.map(function (c) {
+      return '<span class="tr ' + (c.ok ? 'ok' : 'bad') + '"><i>' + (c.ok ? '✓' : '✗') + '</i><span>' + esc(c.label) + '</span><b>' + (c.ok ? c.ms + ' мс' : 'нет ответа') + '</b></span>';
+    }).join('');
+    return '<span class="tw"><span class="tag ' + (n === total ? 'ok' : n >= total - 2 ? 'warn' : 'bad') + '">' + n + '/' + total + '</span>' +
+      '<span class="tip" role="tooltip">' + rows + '<span class="tn">Проверено ' + fmtAt(r.at) + '</span></span></span>';
+  }
+  function applyResults(res) { S.discord.results = (res && res.results) || {}; }
+  function demoChecks(name) {
+    var h = 0;
+    for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    var n = h % 7;
+    return TARGETS.map(function (t, k) { var ok = k < n; return { id: t.id, label: t.label, host: t.host, ok: ok, ms: ok ? 60 + ((h >> k) % 90) : null }; });
+  }
+  function onTestEvent(p) {
+    if (!testing) return;
+    var bar = $('#testBox .bar-fill');
+    if (p.phase === 'start') {
+      scanning = p.name;
+      $('#testState').textContent = 'Проверяем ' + p.name + ' (' + (p.index + 1) + ' из ' + p.total + ')';
+      if (bar) bar.style.width = (p.index / p.total * 100) + '%';
+    } else {
+      testRan.push(p.name);
+      if (bar) bar.style.width = ((p.index + 1) / p.total * 100) + '%';
+      if (inTauri) T.core.invoke('zapret_results').then(function (r) { applyResults(r); renderDiscord(); }).catch(function () {});
+    }
+    renderDiscord();
+    var el = $('.strat.scan');
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+  }
+  function vpnRunning() { return VPNS.filter(function (id) { return S.on[id]; }).length > 0; }
 
   function renderTelegram() {
     var p = String(S.tgc.port).replace(/\D/g, '') || '1443';
@@ -401,7 +467,10 @@
       return false;
     }
     if (on && VPNS.indexOf(id) >= 0 && vpnConflict(id, quiet)) return false;
-    if (inTauri && id === 'discord') { realDiscord(on, quiet); return true; }
+    if (inTauri && id === 'discord') {
+      if (testing) { if (!quiet) toast('Идёт проверка стратегий, дождитесь завершения.', 'warn'); return false; }
+      realDiscord(on, quiet); return true;
+    }
     if (inTauri && id === 'telegram') { realTelegram(on, quiet); return true; }
     if (inTauri && id === 'fptn') { realFptn(on, quiet); return true; }
     if (inTauri && id === 'wg') { realWg(on, quiet); return true; }
@@ -1333,49 +1402,99 @@
     renderAll();
     restartDiscord();
   }
-  function autotest() {
-    if (testing) return;
-    var d = S.discord, names = STRATS.slice();
-    var winner = Math.floor(Math.random() * names.length);
-    testing = true;
-    flash = null;
-    names.forEach(function (n) { d.scores[n] = null; });
-    $('#btnTest').disabled = true;
+  /* all: проверить все и ничего не менять; иначе: искать, пока не найдётся стратегия, где открывается всё */
+  function runTest(all) {
+    if (testing || probing) return;
+    var d = S.discord;
+    if (vpnRunning()) { toast('Выключите VPN на время проверки: через него результат не показывает работу запрета.', 'warn'); return; }
+    if (inTauri && S.admin === false) { toast('Нужны права администратора. Нажмите «Дать права» вверху окна.', 'warn'); return; }
+    if (inTauri && !installed('discord')) { toast('Сначала установите компонент.', 'warn'); return; }
+    var names = STRATS.slice(), i0 = names.indexOf(d.strategy);
+    if (i0 > 0) { names.splice(i0, 1); names.unshift(d.strategy); }   /* текущую проверяем первой */
+    testing = true; testCancel = false; testRan = []; scanning = null; flash = null;
     $('#testBox .bar-fill').style.width = '0%';
-    addLog({ svc: 'Zapret (Discord)', m: 'Подбор стратегии…' });
-    var i = 0;
-    function step() {
-      if (i >= names.length) { finish(); return; }
-      var k = i, n = names[k];
-      scanning = n;
-      $('#testState').textContent = 'Проверяем ' + n + ' (' + (k + 1) + ' из ' + names.length + ')';
-      renderDiscord();
-      $('#testBox .bar-fill').style.width = (k / names.length * 100) + '%';
-      var el = $('.strat.scan');
-      if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
-      setTimeout(function () {
-        d.scores[n] = k === winner ? 6 : Math.floor(Math.random() * 6);
-        i++;
-        step();
-      }, 260);
+    $('#testState').textContent = 'Запускаем проверку…';
+    addLog({ svc: 'Zapret (Discord)', m: all ? 'Проверка всех стратегий…' : 'Подбор стратегии…' });
+    renderDiscord();
+    var run;
+    if (inTauri) {
+      run = T.core.invoke('zapret_test', { strategies: names, game: d.game ? 'all' : 'disabled', ipset: d.ipset, stopOnFull: !all });
+    } else {
+      run = new Promise(function (resolve) {
+        var k = 0;
+        (function step() {
+          if (k >= names.length || testCancel) { resolve({ results: d.results }); return; }
+          var n = names[k], i = k;
+          onTestEvent({ phase: 'start', index: i, total: names.length, name: n });
+          setTimeout(function () {
+            var checks = demoChecks(n);
+            d.results[n] = { at: Math.floor(Date.now() / 1000), checks: checks, error: null };
+            onTestEvent({ phase: 'done', index: i, total: names.length, name: n });
+            k++;
+            if (!all && okCount(d.results[n]) === checks.length) { resolve({ results: d.results }); return; }
+            step();
+          }, 200);
+        })();
+      });
     }
-    function finish() {
-      scanning = null;
-      testing = false;
-      d.strategy = names[winner];
-      d.mode = 'auto';
-      d.lastTest = 'только что, ' + hms().slice(0, 5);
-      flash = names[winner];
-      S.targets.forEach(function (t) { t.ok = true; t.ms = 70 + Math.floor(Math.random() * 70); });
-      $('#btnTest').disabled = false;
-      addLog({ m: 'Выбрана стратегия ' + names[winner] + '. Все сервисы открываются.', ok: true });
-      toast('Подобрана стратегия: ' + names[winner]);
+    run.then(function (res) {
+      applyResults(res);
+      d.free = null;
+      testing = false; scanning = null;
+      var ran = testRan.length ? testRan : names, best = null;
+      ran.forEach(function (n) {
+        var r = d.results[n];
+        if (!r || r.error) return;
+        var c = okCount(r), ms = avgMs(r);
+        if (!best || c > best.c || (c === best.c && ms < best.ms)) best = { n: n, c: c, ms: ms };
+      });
+      var total = TARGETS.length;
+      if (!best || best.c === 0) {
+        addLog({ m: 'Ни одна из проверенных стратегий не открывает сервисы.' });
+        toast('Ни одна стратегия не открыла сервисы. Проверьте интернет и отключите VPN.', 'warn');
+      } else if (all) {
+        addLog({ m: 'Проверено стратегий: ' + ran.length + '. Лучшая: ' + best.n + ', ' + best.c + ' из ' + total + '.', ok: true });
+        toast('Проверено: ' + ran.length + '. Лучшая: ' + best.n + ' (' + best.c + '/' + total + ')');
+      } else {
+        var changed = d.strategy !== best.n;
+        d.strategy = best.n; d.mode = 'auto'; flash = best.n;
+        addLog({ m: 'Выбрана стратегия ' + best.n + ': открывается ' + best.c + ' из ' + total + '.', ok: best.c === total });
+        toast((best.c === total ? 'Подобрана стратегия: ' : 'Лучшая из найденных: ') + best.n + (best.c === total ? '' : ' (' + best.c + '/' + total + ')'));
+        if (changed) restartDiscord();
+        setTimeout(function () { flash = null; renderDiscord(); }, 1400);
+      }
       renderAll();
-      var w = $('.strat.cur');
-      if (w && w.scrollIntoView) w.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      setTimeout(function () { flash = null; renderDiscord(); }, 1400);
-    }
-    step();
+      if (!all && best && best.c > 0) { var w = $('.strat.cur'); if (w && w.scrollIntoView) w.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    }).catch(function (e) {
+      testing = false; scanning = null;
+      toast(String(e).slice(0, 220), 'warn');
+      if (inTauri) T.core.invoke('zapret_results').then(function (r) { applyResults(r); renderAll(); }).catch(function () { renderAll(); });
+      else renderAll();
+    });
+  }
+  function autotest() { runTest(false); }
+  function testall() { runTest(true); }
+  function testcancel() {
+    testCancel = true;
+    $('#testState').textContent = 'Останавливаем после текущей стратегии…';
+    if (inTauri) T.core.invoke('zapret_test_cancel').catch(function () {});
+  }
+  /* быстрая проверка сервисов на текущей стратегии */
+  function probe() {
+    if (testing || probing) return;
+    if (vpnRunning()) { toast('Выключите VPN на время проверки: через него результат не показывает работу запрета.', 'warn'); return; }
+    probing = true;
+    renderDiscord();
+    var d = S.discord;
+    var run = inTauri ? T.core.invoke('zapret_probe') : new Promise(function (resolve) {
+      setTimeout(function () { resolve({ strategy: S.on.discord ? d.strategy : null, checks: demoChecks(S.on.discord ? d.strategy : 'без запрета'), at: Math.floor(Date.now() / 1000) }); }, 500);
+    });
+    run.then(function (r) {
+      probing = false;
+      if (r.strategy) { d.results[r.strategy] = { at: r.at, checks: r.checks, error: null }; d.free = null; }
+      else d.free = { at: r.at, checks: r.checks };
+      renderDiscord();
+    }).catch(function (e) { probing = false; renderDiscord(); toast(String(e).slice(0, 200), 'warn'); });
   }
 
 
@@ -1664,6 +1783,9 @@
     toggleAll: toggleAll,
     checkUpdates: checkUpdates,
     autotest: autotest,
+    testall: testall,
+    testcancel: testcancel,
+    probe: probe,
     fSave: function () { fSave(); }, fSaveToken: fSaveToken, fServer: fServer, fClearToken: fClearToken, fReset: fReset, fRepair: fRepair, fLog: fLog,
     fAdapter: function (a) { fAdapter(a); }, fTakeOver: function (a) { fTakeOver(a); },
     tgSave: tgSave, tgReset: tgReset, tgSecret: tgSecret,
@@ -1784,8 +1906,6 @@
   /* в настоящем приложении до первой проверки не пишем «Актуально» */
   if (inTauri) { S.sec.items = []; S.sec.last = 'ещё не запускалась'; startPending = true; S.comps.forEach(function (c) { c.checked = false; }); }
   if (appMode) { S.uptime = 0; S.lastCheck = 'ещё не проверяли'; }
-  S.discord.scores = {};
-  STRATS.forEach(function (n, i) { S.discord.scores[n] = INIT_SCORES[i]; });
   renderAll();
   var h = (location.hash || '').replace(/^#/, '');
   go(PAGES.indexOf(h) >= 0 ? h : 'home');
@@ -1863,6 +1983,8 @@
         }
       }).catch(function () {});
     }).catch(function () { renderAll(); });
+    T.event.listen('zapret-test', function (e) { onTestEvent(e.payload || {}); });
+    T.core.invoke('zapret_results').then(function (r) { applyResults(r); renderDiscord(); }).catch(function () {});
     T.event.listen('module-progress', function (e) {
       var p = e.payload || {}, c = comp(p.id);
       if (c && c.busy != null && p.total) { c.busy = Math.min(99, Math.round(p.downloaded / p.total * 100)); if (p.stage) c.stage = p.stage; renderAll(); }

@@ -412,3 +412,19 @@ body.app .view { height: 100vh; overflow-y: auto; }
 .proc-list button:hover, .proc-list button:focus-visible { background: var(--accent-soft); }
 .proc-list small { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .proc-list button[hidden] { display: none; }
+
+/* Вкладка Discord: кнопки проверки, сервисы, подсказка на пузырьке */
+.strat-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.tgt .tl { display: grid; gap: 1px; min-width: 0; }
+.tgt .tl small { color: var(--faint); font-size: 11px; overflow-wrap: anywhere; }
+.strat .tw { position: relative; display: inline-flex; }
+.strat .tip { display: none; position: absolute; top: calc(100% + 6px); right: -6px; z-index: 30; width: max-content; min-width: 220px; max-width: 280px; gap: 5px; padding: 10px 12px; text-align: left; background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); font-family: var(--font-ui); font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--fg); cursor: default; }
+.strat .tw:hover .tip, .strat:focus-visible .tip { display: grid; }
+.strat:nth-last-child(-n+3) .tip { top: auto; bottom: calc(100% + 6px); }
+.strat .tip .tr { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; }
+.strat .tip .tr i { font-style: normal; font-weight: 700; }
+.strat .tip .tr.ok i { color: var(--accent); }
+.strat .tip .tr.bad i, .strat .tip .tr.bad b { color: var(--bad); }
+.strat .tip .tr b { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+.strat .tip .tn { color: var(--faint); font-size: 11px; }
+.strat .tip .tr + .tn { margin-top: 3px; padding-top: 6px; border-top: 1px solid var(--line); }

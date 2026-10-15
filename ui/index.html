@@ -125,14 +125,19 @@
                     <div class="bar-track mt-s"><span class="bar-fill"></span></div>
                   </div>
                 </div>
-                <button class="btn primary" id="btnTest" data-act="autotest"><svg class="ic"><use href="#i-refresh"/></svg>Подобрать стратегию</button>
+                <div class="strat-btns">
+                  <button class="btn" id="btnCheck" data-act="testall" title="Проверить все стратегии по очереди и показать результаты. Текущая стратегия не меняется."><svg class="ic"><use href="#i-check"/></svg>Проверить стратегии</button>
+                  <button class="btn primary" id="btnTest" data-act="autotest" title="Проверять стратегии, пока не найдётся та, на которой открываются все сервисы, и включить её."><svg class="ic"><use href="#i-refresh"/></svg>Подобрать стратегию</button>
+                  <button class="btn" id="btnCancel" data-act="testcancel" hidden>Остановить</button>
+                </div>
               </div>
               <div class="strats" id="strats"></div>
             </div>
             <div class="cols mt">
               <div class="stack">
                 <div class="panel">
-                  <div class="panel-head"><h3>Доступность сервисов</h3><span class="note">Проверка: <span id="lastTest"></span></span></div>
+                  <div class="panel-head"><h3>Доступность сервисов</h3><button class="btn sm" id="btnProbe" data-act="probe"><svg class="ic"><use href="#i-refresh"/></svg>Проверить</button></div>
+                  <div class="note" id="tgtWho"></div>
                   <div id="targets"></div>
                 </div>
                 <div class="panel">

@@ -5,11 +5,12 @@
 //! `winws.exe` сам, без cmd и без окна. Поэтому работают все стратегии, в том числе
 //! новые, а отдельной конвертации в другой формат не нужно.
 
+use tauri::Emitter;
 use std::{
     fs,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::Mutex,
+    sync::{atomic::{AtomicBool, Ordering}, Mutex},
     time::Duration,
 };
 
@@ -301,6 +302,10 @@ pub async fn zapret_start(
     game: String,
     ipset: String,
 ) -> Result<(), String> {
+    start_inner(&state, &strategy, &game, &ipset).await
+}
+
+async fn start_inner(state: &Zapret, strategy: &str, game: &str, ipset: &str) -> Result<(), String> {
     if strategy.contains(['/', '\\']) || strategy.contains("..") || !strategy.starts_with("general") {
         return Err("Неверное имя стратегии".into());
     }
@@ -315,11 +320,11 @@ pub async fn zapret_start(
     let dir: PathBuf = crate::modules::active_dir("discord")?;
     let bat = fs::read_to_string(dir.join(format!("{strategy}.bat")))
         .map_err(|_| format!("Не найден файл стратегии {strategy}.bat"))?;
-    prepare_lists(&dir, &ipset)?;
+    prepare_lists(&dir, ipset)?;
 
     let bin = format!("{}\\", dir.join("bin").display());
     let lists = format!("{}\\", dir.join("lists").display());
-    let (tcp, udp) = match game.as_str() {
+    let (tcp, udp) = match game {
         "all" => ("1024-65535", "1024-65535"),
         "tcp" => ("1024-65535", "12"),
         "udp" => ("12", "1024-65535"),
@@ -452,6 +457,247 @@ pub async fn zapret_take_over(state: tauri::State<'_, Zapret>) -> Result<(), Str
     Ok(())
 }
 
+// ───────────────────────── Проверка стратегий и сервисов ─────────────────────────
+
+/// Что проверяем: (id, название, хост). Достаточно получить любой HTTPS-ответ: если DPI режет соединение,
+/// рукопожатие TLS не завершится и запрос упадёт по таймауту или сбросу.
+const TARGETS: [(&str, &str, &str); 6] = [
+    ("discord", "Discord", "discord.com"),
+    ("gateway", "Discord: чат и голос", "gateway.discord.gg"),
+    ("cdn", "Discord: картинки", "cdn.discordapp.com"),
+    ("youtube", "YouTube", "www.youtube.com"),
+    ("ytimg", "YouTube: превью", "i.ytimg.com"),
+    ("video", "YouTube: видео", "redirector.googlevideo.com"),
+];
+
+static BUSY: AtomicBool = AtomicBool::new(false);
+static CANCEL: AtomicBool = AtomicBool::new(false);
+
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
+pub struct Check {
+    id: &'static str,
+    label: &'static str,
+    host: &'static str,
+    ok: bool,
+    ms: Option<u64>,
+}
+
+async fn probe_one(client: &reqwest::Client, (id, label, host): (&'static str, &'static str, &'static str)) -> Check {
+    let t = std::time::Instant::now();
+    let ok = client.get(format!("https://{host}/")).send().await.is_ok();
+    let ms = t.elapsed().as_millis() as u64;
+    Check { id, label, host, ok, ms: if ok { Some(ms) } else { None } }
+}
+
+/// Проверяет все сервисы одновременно. Системный прокси не используем: проверяем сам канал.
+async fn probe_all() -> Result<Vec<Check>, String> {
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(6))
+        .redirect(reqwest::redirect::Policy::none())
+        .pool_max_idle_per_host(0)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(futures_util::future::join_all(TARGETS.iter().map(|t| probe_one(&client, *t))).await)
+}
+
+fn failed_checks() -> Vec<Check> {
+    TARGETS.iter().map(|&(id, label, host)| Check { id, label, host, ok: false, ms: None }).collect()
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+fn results_path() -> Result<PathBuf, String> {
+    Ok(crate::modules::modules_root()?.join("zapret-test.json"))
+}
+
+fn component_version() -> String {
+    crate::modules::active_dir("discord")
+        .ok()
+        .and_then(|d| d.file_name().map(|n| n.to_string_lossy().to_string()))
+        .unwrap_or_default()
+}
+
+/// Добавляет результат стратегии в сохранённые. Если версия компонента сменилась, старые результаты неактуальны.
+fn merge_store(old: serde_json::Value, version: &str, at: u64, name: &str, checks: &[Check], error: Option<&str>) -> serde_json::Value {
+    let mut results = if old.get("version").and_then(|v| v.as_str()) == Some(version) {
+        old.get("results").cloned().unwrap_or_else(|| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+    results[name] = serde_json::json!({ "at": at, "checks": checks, "error": error });
+    serde_json::json!({ "version": version, "results": results })
+}
+
+fn save_result(name: &str, checks: &[Check], error: Option<&str>) {
+    let Ok(path) = results_path() else { return };
+    let old = fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    let v = merge_store(old, &component_version(), now_secs(), name, checks, error);
+    let _ = fs::write(path, v.to_string());
+}
+
+/// Сохранённые результаты проверки для установленной версии (пусто, если версия другая).
+#[tauri::command]
+pub fn zapret_results() -> serde_json::Value {
+    let v: serde_json::Value = results_path()
+        .ok()
+        .and_then(|p| fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+    if v.get("version").and_then(|x| x.as_str()) == Some(component_version().as_str()) {
+        v
+    } else {
+        serde_json::json!({ "version": component_version(), "results": {} })
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct Probe {
+    /// Какая стратегия сейчас работает; пусто, если запрет выключен
+    strategy: Option<String>,
+    checks: Vec<Check>,
+    at: u64,
+}
+
+/// Быстрая проверка доступности сервисов через текущий канал. Если запрет работает, результат
+/// запоминается за его стратегией.
+#[tauri::command]
+pub async fn zapret_probe(state: tauri::State<'_, Zapret>) -> Result<Probe, String> {
+    if BUSY.load(Ordering::SeqCst) {
+        return Err("Сейчас идёт проверка стратегий".into());
+    }
+    let own = {
+        let mut g = state.0.lock().unwrap();
+        g.as_mut().map(|c| matches!(c.try_wait(), Ok(None))).unwrap_or(false)
+    };
+    let running = own || !our_pids().is_empty();
+    let strategy = if running {
+        results_last().and_then(|l| l.get("strategy").and_then(|v| v.as_str()).map(String::from))
+    } else {
+        None
+    };
+    let checks = probe_all().await?;
+    if let Some(name) = &strategy {
+        save_result(name, &checks, None);
+    }
+    Ok(Probe { strategy, checks, at: now_secs() })
+}
+
+fn results_last() -> Option<serde_json::Value> {
+    let root = crate::modules::modules_root().ok()?;
+    serde_json::from_str(&fs::read_to_string(root.join("zapret.json")).ok()?).ok()
+}
+
+#[derive(serde::Serialize, Clone)]
+struct TestProgress {
+    index: usize,
+    total: usize,
+    name: String,
+    /// start: запускаем стратегию, done: получен результат
+    phase: &'static str,
+    ok_count: Option<usize>,
+}
+
+/// Проверяет стратегии по очереди: запускает, ждёт, опрашивает сервисы. Если `stop_on_full`, останавливается на
+/// первой, где доступно всё. После проверки возвращает запрет в прежнее состояние (был включён, работает дальше
+/// с прежней стратегией; был выключен, остаётся выключенным).
+#[tauri::command]
+pub async fn zapret_test(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Zapret>,
+    strategies: Vec<String>,
+    game: String,
+    ipset: String,
+    stop_on_full: bool,
+) -> Result<serde_json::Value, String> {
+    if !crate::settings::is_admin_sync() {
+        return Err("Нужны права администратора. Нажмите «Дать права» в верхней части окна Бунта.".into());
+    }
+    if BUSY.swap(true, Ordering::SeqCst) {
+        return Err("Проверка уже идёт".into());
+    }
+    CANCEL.store(false, Ordering::SeqCst);
+    let result = run_test(&app, &state, &strategies, &game, &ipset, stop_on_full).await;
+    BUSY.store(false, Ordering::SeqCst);
+    result?;
+    Ok(zapret_results())
+}
+
+async fn run_test(
+    app: &tauri::AppHandle,
+    state: &Zapret,
+    strategies: &[String],
+    game: &str,
+    ipset: &str,
+    stop_on_full: bool,
+) -> Result<(), String> {
+    if !foreign_winws().is_empty() || service_exists("zapret") {
+        return Err("Запрет уже запущен не из Бунта (служба zapret или другой winws.exe). Остановите его, и Бунт сможет проверить стратегии.".into());
+    }
+    let prev_raw = crate::modules::modules_root().ok().and_then(|r| fs::read_to_string(r.join("zapret.json")).ok());
+    let prev: serde_json::Value = prev_raw.as_deref().and_then(|s| serde_json::from_str(s).ok()).unwrap_or_default();
+    let was_running = {
+        let own = state.0.lock().unwrap().as_mut().map(|c| matches!(c.try_wait(), Ok(None))).unwrap_or(false);
+        own || !our_pids().is_empty()
+    };
+
+    let total = strategies.len();
+    for (i, name) in strategies.iter().enumerate() {
+        if CANCEL.load(Ordering::SeqCst) {
+            break;
+        }
+        let _ = app.emit("zapret-test", TestProgress { index: i, total, name: name.clone(), phase: "start", ok_count: None });
+        let (checks, error) = match start_inner(state, name, game, ipset).await {
+            Ok(()) => {
+                tokio::time::sleep(Duration::from_millis(800)).await;
+                match probe_all().await {
+                    Ok(c) => (c, None),
+                    Err(e) => (failed_checks(), Some(e)),
+                }
+            }
+            Err(e) => (failed_checks(), Some(e)),
+        };
+        state.stop();
+        let ok_count = checks.iter().filter(|c| c.ok).count();
+        save_result(name, &checks, error.as_deref());
+        let _ = app.emit("zapret-test", TestProgress { index: i, total, name: name.clone(), phase: "done", ok_count: Some(ok_count) });
+        if stop_on_full && ok_count == checks.len() {
+            break;
+        }
+    }
+
+    // Возвращаем как было.
+    state.stop();
+    if let Ok(root) = crate::modules::modules_root() {
+        let path = root.join("zapret.json");
+        match &prev_raw {
+            Some(raw) => {
+                let _ = fs::write(&path, raw);
+            }
+            None => {
+                let _ = fs::remove_file(&path);
+            }
+        }
+    }
+    if was_running {
+        let s = |k: &str, d: &str| prev.get(k).and_then(|v| v.as_str()).unwrap_or(d).to_string();
+        let strategy = s("strategy", "");
+        if !strategy.is_empty() {
+            let _ = start_inner(state, &strategy, &s("game", "disabled"), &s("ipset", "none")).await;
+        }
+    }
+    Ok(())
+}
+
+/// Прерывает проверку стратегий после текущей.
+#[tauri::command]
+pub fn zapret_test_cancel() {
+    CANCEL.store(true, Ordering::SeqCst);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -490,5 +736,27 @@ mod tests {
             }
         }
         assert!(n >= 20, "найдено только {n}");
+    }
+
+    #[test]
+    fn merge_keeps_same_version_only() {
+        let c = vec![Check { id: "discord", label: "Discord", host: "discord.com", ok: true, ms: Some(80) }];
+        let a = merge_store(serde_json::Value::Null, "1.0", 10, "general", &c, None);
+        let b = merge_store(a.clone(), "1.0", 20, "general (ALT)", &c, None);
+        assert_eq!(b["results"].as_object().unwrap().len(), 2);
+        assert_eq!(b["results"]["general"]["at"], 10);
+        let n = merge_store(b, "2.0", 30, "general", &c, Some("ошибка"));
+        assert_eq!(n["results"].as_object().unwrap().len(), 1);
+        assert_eq!(n["results"]["general"]["error"], "ошибка");
+        assert_eq!(n["version"], "2.0");
+    }
+
+    #[test]
+    fn targets_are_unique() {
+        let mut ids: Vec<_> = TARGETS.iter().map(|t| t.0).collect();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), TARGETS.len());
+        assert_eq!(failed_checks().len(), 6);
     }
 }
