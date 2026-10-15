@@ -46,7 +46,7 @@
   var S = {
     page: 'home',
     on: { discord: false, telegram: false, fptn: false, vless: false, wg: false },
-    discord: { mode: 'auto', strategy: 'general (ALT2)', game: false, ipset: 'none', results: {}, free: null, scanHours: '0', scanLast: 0, autoupd: true, ipsetUpdated: 'сегодня, 09:12' },
+    discord: { mode: 'auto', strategy: 'general (ALT2)', game: 'disabled', tcpPorts: '1024-65535', udpPorts: '1024-65535', custom: [], ipset: 'none', results: {}, free: null, scanHours: '0', scanLast: 0, autoupd: true, ipsetUpdated: 'ещё не обновляли' },
     telegram: { port: '1443', link: '' },
     fc: { token_in: '', bypass_method: 'sni-spoofing-yandex-26-4', strategy: 'rolling-tunnel', sni: 'google.com', mtu: '1420', preferred_server: '', tun_name: 'FPTN', tun_ip: '10.0.0.1', exclude_networks: '10.0.0.0/8,192.168.0.0/16', include_networks: '', split: false, split_mode: 'exclude', split_domains: '', adblock: true, blacklist: '', auto_gateway: true, remove_adapter: true, autostart: false },
     fptn: { tokenSet: false, hint: '', servers: [], tokenError: '', adapter: { exists: false, status: '', description: '' }, dirty: false, busy: false, repairMsg: '', logOpen: false, log: '' },
@@ -60,6 +60,8 @@
       ipset: { file: 'ipset-all.txt', title: 'Свои IP и подсети', hint: 'IP-адреса и подсети для обхода, по одному на строку.', text: '# IP и подсети\n203.0.113.0/24\n' },
       ipsetEx: { file: 'ipset-exclude-user.txt', title: 'Исключения IP', hint: 'IP-адреса и подсети, которые не нужно обрабатывать.', text: '' }
     },
+    svc: { installed: false, running: false, strategy: '', foreign: false, busy: false },
+    hosts: { installed: false, entries: 0, youtube: [], lines: [] },
     prof: {},
     sel: {},
     nextId: 100,
@@ -193,12 +195,26 @@
     else { p.className = 'pill'; p.innerHTML = ico('check') + 'Все системы работают'; }
   }
 
+  function validPorts(s) {
+    s = String(s).trim();
+    if (!s || s.length > 120) return false;
+    return s.split(',').every(function (p) {
+      var m = /^(\d{1,5})(?:-(\d{1,5}))?$/.exec(p.trim());
+      if (!m) return false;
+      var a = +m[1], b = m[2] ? +m[2] : a;
+      return a >= 1 && b <= 65535 && a <= b;
+    });
+  }
+  function targetsAll() {
+    return TARGETS.concat((S.discord.custom || []).map(function (h) { return { id: 'custom:' + h, label: h, host: h }; }));
+  }
+
   function renderDiscord() {
     var d = S.discord;
     $('#stratNow').textContent = d.strategy;
     var cr = d.results[d.strategy];
     $('#stratWhen').textContent = (d.mode === 'auto' ? 'Подобрана автоматически' : 'Выбрана вручную') + ' · ' +
-      (cr && !cr.error ? 'проверена ' + fmtAt(cr.at) + ': открывается ' + okCount(cr) + ' из ' + TARGETS.length : cr ? 'не запустилась при проверке' : 'ещё не проверялась');
+      (cr && !cr.error ? 'проверена ' + fmtAt(cr.at) + ': открывается ' + okCount(cr) + ' из ' + cr.checks.length : cr ? 'не запустилась при проверке' : 'ещё не проверялась');
     $('#btnTest').disabled = testing;
     $('#btnCheck').disabled = testing;
     $('#btnCancel').hidden = !testing;
@@ -213,11 +229,16 @@
     $('#ipsetWarn').hidden = d.ipset !== 'any';
     $('#ipsetDesc').textContent = { none: 'none: IP-адреса не проверяются', loaded: 'loaded: IP проверяется по списку ipset-all.txt', any: 'any: любой IP попадает под фильтр' }[d.ipset];
     $('#ipsetUpd').textContent = d.ipsetUpdated;
+    $('#gameDesc').textContent = { disabled: 'Обход для игр и других сервисов выключен', all: 'Обход для игр на TCP и UDP, порты из полей ниже', tcp: 'Обход только для TCP-соединений', udp: 'Обход только для UDP-соединений' }[d.game] + '. После переключения запрет перезапускается.';
+    $('#gamePorts').hidden = d.game === 'disabled';
+    $('#gpTcp').hidden = d.game === 'udp';
+    $('#gpUdp').hidden = d.game === 'tcp';
+    renderDiscordExtras();
     $('#dVer').textContent = comp('discord').cur || '–';
     $('#lists').innerHTML = Object.keys(S.lists).map(function (k) {
-      var l = S.lists[k];
-      var n = l.text.split('\n').map(function (x) { return x.trim(); }).filter(function (x) { return x && x.charAt(0) !== '#'; }).length;
-      return '<div class="row"><div class="lbl">' + l.title + '<small class="mono">' + l.file + '</small></div><div class="inl"><span class="tag">записей: ' + n + '</span><button class="btn sm" data-act="editList" data-arg="' + k + '">Редактировать</button></div></div>';
+      var l = S.lists[k], ed = l.editable !== false;
+      var n = l.count != null ? l.count : l.text.split('\n').map(function (x) { return x.trim(); }).filter(function (x) { return x && x.charAt(0) !== '#'; }).length;
+      return '<div class="row"><div class="lbl">' + esc(l.title) + '<small class="mono">' + esc(l.file) + '</small></div><div class="inl"><span class="tag">записей: ' + n + '</span><button class="btn sm" data-act="editList" data-arg="' + k + '">' + (ed ? 'Редактировать' : 'Открыть') + '</button></div></div>';
     }).join('');
     $('#strats').innerHTML = STRAT_DEFS.map(function (s) {
       var r = d.results[s.f], cur = d.strategy === s.f;
@@ -237,7 +258,7 @@
     } else {
       var byId = {};
       (src ? src.checks : []).forEach(function (c) { byId[c.id] = c; });
-      $('#targets').innerHTML = TARGETS.map(function (t) {
+      $('#targets').innerHTML = targetsAll().map(function (t) {
         var c = byId[t.id];
         return '<div class="tgt"><span class="tl">' + esc(t.label) + '<small class="mono">' + t.host + '</small></span>' +
           '<span class="ms">' + (c && c.ok ? c.ms + ' мс' : '') + '</span>' +
@@ -274,7 +295,7 @@
     var h = 0;
     for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
     var n = h % 7;
-    return TARGETS.map(function (t, k) { var ok = k < n; return { id: t.id, label: t.label, host: t.host, ok: ok, ms: ok ? 60 + ((h >> k) % 90) : null }; });
+    return targetsAll().map(function (t, k) { var ok = k < n; return { id: t.id, label: t.label, host: t.host, ok: ok, ms: ok ? 60 + ((h >> k) % 90) : null }; });
   }
   function onTestEvent(p) {
     if (!testing) return;
@@ -326,6 +347,43 @@
     }).catch(function () { probing = false; renderDiscord(); });
   }
   setInterval(function () { if (scanDue()) autoScan(); }, 60000);
+
+  /* дополнительные возможности запрета: службы, hosts, фейки, диагностика */
+  function renderDiscordExtras() {
+    var v = S.svc, d = S.discord, h = S.hosts;
+    var tag = $('#svcTag'), desc = $('#svcDesc'), btns = $('#svcBtns');
+    if (!tag) return;
+    if (v.foreign) {
+      tag.className = 'tag warn'; tag.textContent = 'Чужая служба';
+      desc.textContent = 'Служба zapret поставлена не из Бунта (например, через service.bat). Когда будете включать запрет в Бунте, он предложит её убрать.';
+      btns.innerHTML = '';
+    } else if (v.installed) {
+      tag.className = 'tag ' + (v.running ? 'ok' : ''); tag.textContent = v.running ? 'Работает' : 'Остановлена';
+      desc.textContent = 'Запрет запускается вместе с Windows, даже когда Бунт закрыт. Стратегия службы: ' + (v.strategy || 'неизвестна') + '. Чтобы применить другую стратегию или фильтры, переустановите службу.';
+      btns.innerHTML = '<button class="btn sm" data-act="svcInstall"' + (v.busy ? ' disabled' : '') + '>Переустановить</button><button class="btn sm" data-act="svcRemove"' + (v.busy ? ' disabled' : '') + '>Удалить службу</button>';
+    } else {
+      tag.className = 'tag'; tag.textContent = 'Не установлена';
+      desc.textContent = 'Служба запускает запрет вместе с Windows, без Бунта. Она использует выбранную сейчас стратегию и фильтры. Пока служба установлена, стратегию в Бунте не поменять, её нужно переустановить.';
+      btns.innerHTML = '<button class="btn sm primary" data-act="svcInstall"' + (v.busy || !inTauri ? ' disabled' : '') + '>Установить службу</button>';
+    }
+    $('#hostsDesc').textContent = (h.installed ? 'Записи Бунта добавлены (' + h.entries + '). ' : 'Не добавлены. Нужны для голосового чата Discord и Telegram Web. ') + (h.youtube.length ? 'В hosts есть записи про YouTube, они могут мешать.' : '');
+    $('#customDesc').textContent = d.custom.length ? 'Добавлено сайтов: ' + d.custom.length : 'К шести встроенным адресам можно добавить свои';
+  }
+  function refreshDiscordExtras() {
+    if (!inTauri || !installed('discord')) return;
+    T.core.invoke('zapret_lists').then(function (r) {
+      var o = {};
+      r.lists.forEach(function (l) { o[l.key] = { file: l.file, title: l.title, hint: l.hint, text: l.text, count: l.count, editable: l.editable }; });
+      S.lists = o;
+      S.discord.ipsetUpdated = r.ipset_updated ? fmtAt(r.ipset_updated) : 'ещё не обновляли';
+      renderDiscord();
+    }).catch(function () {});
+    T.core.invoke('zapret_service_status').then(function (r) { S.svc.installed = r.installed; S.svc.running = r.running; S.svc.strategy = r.strategy || ''; S.svc.foreign = r.foreign; renderDiscord(); }).catch(function () {});
+    T.core.invoke('zapret_hosts_status').then(function (r) { S.hosts.installed = r.installed; S.hosts.entries = r.entries; S.hosts.youtube = r.youtube || []; renderDiscord(); }).catch(function () {});
+    T.core.invoke('zapret_targets_get').then(function (r) { S.discord.custom = r || []; renderDiscord(); }).catch(function () {});
+  }
+  function onlyInApp() { toast('Это работает только в приложении.', 'warn'); }
+  function failToast(e) { toast(String(e).slice(0, 220), 'warn'); }
   function vpnRunning() { return VPNS.filter(function (id) { return S.on[id]; }).length > 0; }
 
   function renderTelegram() {
@@ -491,6 +549,7 @@
     if (PAGES.indexOf(page) < 0) page = 'home';
     S.page = page;
     if (page === 'dns') loadDn();
+    if (page === 'discord') refreshDiscordExtras();
     $$('[data-page]').forEach(function (s) { s.hidden = s.dataset.page !== page; });
     $$('.nav').forEach(function (n) { if (n.dataset.go === page) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current'); });
     try { history.replaceState(null, '', '#' + page); } catch (e) { /* без адреса */ }
@@ -574,7 +633,7 @@
     var d = S.discord, n = SVC.discord.name;
     var p = on
       ? (addLog({ svc: n, m: 'Запуск winws со стратегией ' + d.strategy + '…' }),
-         T.core.invoke('zapret_start', { strategy: d.strategy, game: d.game ? 'all' : 'disabled', ipset: d.ipset }))
+         T.core.invoke('zapret_start', { strategy: d.strategy, game: d.game, ipset: d.ipset, gameTcp: d.tcpPorts, gameUdp: d.udpPorts }))
       : T.core.invoke('zapret_stop');
     p.then(function () {
       S.on.discord = on;
@@ -1418,7 +1477,9 @@
     if (stt && v.busy) { stt.className = 'state'; stt.innerHTML = '<span class="spin"></span>Подождите…'; }
   }
   function restartDiscord() {
-    if (!inTauri || !S.on.discord) return;
+    if (!inTauri) return;
+    if (S.svc.installed) { toast('Служба Windows работает с прежними настройками. Нажмите «Переустановить» в блоке «Служба Windows», чтобы применить новые.', 'warn'); return; }
+    if (!S.on.discord) return;
     realDiscord(true, false);
   }
   function stopAll() { IDS.forEach(function (id) { setSvc(id, false, true); }); }
@@ -1456,7 +1517,7 @@
     renderDiscord();
     var run;
     if (inTauri) {
-      run = T.core.invoke('zapret_test', { strategies: names, game: d.game ? 'all' : 'disabled', ipset: d.ipset, stopOnFull: !all });
+      run = T.core.invoke('zapret_test', { strategies: names, game: d.game, ipset: d.ipset, stopOnFull: !all, gameTcp: d.tcpPorts, gameUdp: d.udpPorts });
     } else {
       run = new Promise(function (resolve) {
         var k = 0;
@@ -1486,7 +1547,7 @@
         var c = okCount(r), ms = avgMs(r);
         if (!best || c > best.c || (c === best.c && ms < best.ms)) best = { n: n, c: c, ms: ms };
       });
-      var total = TARGETS.length;
+      var total = best ? d.results[best.n].checks.length : targetsAll().length;
       if (!best || best.c === 0) {
         addLog({ m: 'Ни одна из проверенных стратегий не открывает сервисы.' });
         toast('Ни одна стратегия не открыла сервисы. Проверьте интернет и отключите VPN.', 'warn');
@@ -1792,24 +1853,146 @@
 
   var ACT = {
     editList: function (k) {
-      var l = S.lists[k];
+      var l = S.lists[k], ed = l.editable !== false;
       openModal(l.file,
-        '<p class="note">' + esc(l.hint) + '</p><textarea class="field mono ta" id="listEdit" spellcheck="false" aria-label="' + esc(l.file) + '">' + esc(l.text) + '</textarea>',
-        '<button class="btn primary" data-act="saveList" data-arg="' + k + '">Сохранить</button><button class="btn" data-act="closeModal">Отмена</button>');
+        '<p class="note">' + esc(l.hint) + '</p><textarea class="field mono ta" id="listEdit" spellcheck="false"' + (ed ? '' : ' readonly') + ' aria-label="' + esc(l.file) + '">' + esc(l.text) + '</textarea>',
+        (ed ? '<button class="btn primary" data-act="saveList" data-arg="' + k + '">Сохранить</button><button class="btn" data-act="closeModal">Отмена</button>' : '<button class="btn" data-act="closeModal">Закрыть</button>'));
     },
     saveList: function (k) {
-      S.lists[k].text = $('#listEdit').value;
-      closeModal();
-      addLog({ svc: 'Zapret (Discord)', m: 'Сохранён ' + S.lists[k].file + '.' });
-      toast('Список сохранён. Перезапустите стратегию, чтобы он применился.');
-      renderAll();
+      var text = $('#listEdit').value;
+      function done(clean) {
+        S.lists[k].text = clean;
+        S.lists[k].count = undefined;
+        closeModal();
+        addLog({ svc: 'Zapret (Discord)', m: 'Сохранён ' + S.lists[k].file + '.' });
+        toast(S.on.discord && inTauri ? 'Список сохранён, запрет перезапускается' : 'Список сохранён. Он применится при следующем запуске запрета.');
+        renderAll();
+        if (inTauri) { refreshDiscordExtras(); restartDiscord(); }
+      }
+      if (!inTauri) { done(text); return; }
+      T.core.invoke('zapret_list_save', { key: k, text: text }).then(done).catch(failToast);
     },
     closeModal: closeModal,
     updIpset: function () {
-      S.discord.ipsetUpdated = 'только что, ' + hms().slice(0, 5);
-      addLog({ svc: 'Zapret (Discord)', m: 'Список ipset-all.txt обновлён из репозитория.', ok: true });
-      toast('Список ipset-all.txt обновлён');
-      renderDiscord();
+      if (!inTauri) { S.discord.ipsetUpdated = 'только что, ' + hms().slice(0, 5); toast('Список обновлён (демонстрация)'); renderDiscord(); return; }
+      toast('Скачиваем список…');
+      T.core.invoke('zapret_ipset_update').then(function (r) {
+        S.discord.ipsetUpdated = fmtAt(r.at);
+        addLog({ svc: 'Zapret (Discord)', m: 'Список IP обновлён из репозитория: ' + r.count + ' записей.', ok: true });
+        toast('Список IP обновлён: ' + r.count + ' записей');
+        refreshDiscordExtras();
+        if (S.discord.ipset === 'loaded') restartDiscord();
+        else if (S.discord.ipset !== 'loaded') toast('Список применяется в режиме IPSet loaded.');
+      }).catch(failToast);
+    },
+    fakes: function () {
+      if (!inTauri) { onlyInApp(); return; }
+      T.core.invoke('zapret_fakes').then(function (r) {
+        var opts = function (cur) { return r.fakes.map(function (f) { return '<option value="' + esc(f.name) + '"' + (f.name === cur ? ' selected' : '') + '>' + esc(f.name) + '</option>'; }).join(''); };
+        var unk = function (cur) { return cur ? '' : '<option value="" selected>Другой (не из списка)</option>'; };
+        openModal('Фейки',
+          '<p class="note">Фейк это образец пакета, под который запрет маскирует трафик. Если стратегии не помогают, иногда помогает другой образец. После замены запрет перезапускается.</p>' +
+          '<div class="row"><div class="lbl">Голос Discord (UDP)<small class="mono">ACTIVE_DISCORD_UDP.bin</small></div><select class="field" id="fkDiscord" style="width:230px">' + unk(r.discord) + opts(r.discord) + '</select></div>' +
+          '<div class="row"><div class="lbl">Игры (UDP)<small class="mono">ACTIVE_GAME_UDP.bin</small></div><select class="field" id="fkGame" style="width:230px">' + unk(r.game) + opts(r.game) + '</select></div>',
+          '<button class="btn primary" data-act="fakesApply" data-arg="' + esc((r.discord || '') + '|' + (r.game || '')) + '">Применить</button><button class="btn" data-act="closeModal">Отмена</button>');
+      }).catch(failToast);
+    },
+    fakesApply: function (arg) {
+      var was = String(arg).split('|'), calls = [];
+      [['discord', $('#fkDiscord').value, was[0]], ['game', $('#fkGame').value, was[1]]].forEach(function (x) {
+        if (x[1] && x[1] !== x[2]) calls.push(T.core.invoke('zapret_fake_set', { target: x[0], name: x[1] }));
+      });
+      if (!calls.length) { closeModal(); return; }
+      Promise.all(calls).then(function () {
+        closeModal();
+        addLog({ svc: 'Zapret (Discord)', m: 'Фейки заменены.', ok: true });
+        toast('Фейки заменены');
+        restartDiscord();
+      }).catch(failToast);
+    },
+    hosts: function () {
+      if (!inTauri) { onlyInApp(); return; }
+      openModal('Записи hosts', '<p class="note">Скачиваем записи…</p>', '<button class="btn" data-act="closeModal">Закрыть</button>');
+      var removeBtn = S.hosts.installed ? '<button class="btn" data-act="hostsRemove">Удалить записи Бунта</button>' : '';
+      T.core.invoke('zapret_hosts_preview').then(function (lines) {
+        S.hosts.lines = lines;
+        $('#mBody').innerHTML = '<p class="note">Flowseal предлагает прописать в файл hosts адреса, которые помогают голосовому чату Discord и Telegram Web. Ниже всё, что будет добавлено (' + lines.length + ' строк). Записи закрепляют IP-адреса и со временем могут устареть. Бунт добавит их отдельным блоком, который можно удалить, а копию вашего hosts сохранит в папке modules.</p>' +
+          '<pre class="hosts-pre mono">' + esc(lines.join('\n')) + '</pre>' +
+          (S.hosts.youtube.length ? '<p class="note warn">В вашем hosts уже есть записи про YouTube, они могут мешать: ' + esc(S.hosts.youtube.slice(0, 3).join('; ')) + '</p>' : '');
+        $('#mFoot').innerHTML = '<button class="btn primary" data-act="hostsApply">' + (S.hosts.installed ? 'Обновить записи' : 'Добавить в hosts') + '</button>' + removeBtn + '<button class="btn" data-act="closeModal">Отмена</button>';
+      }).catch(function (e) {
+        $('#mBody').innerHTML = '<p class="note warn">' + esc(String(e)) + '</p>';
+        $('#mFoot').innerHTML = removeBtn + '<button class="btn" data-act="closeModal">Закрыть</button>';
+      });
+    },
+    hostsApply: function () {
+      T.core.invoke('zapret_hosts_apply', { lines: S.hosts.lines }).then(function (r) {
+        S.hosts.installed = r.installed; S.hosts.entries = r.entries; S.hosts.youtube = r.youtube || [];
+        closeModal(); addLog({ svc: 'Zapret (Discord)', m: 'Записи добавлены в hosts: ' + r.entries + '.', ok: true });
+        toast('Записи добавлены в hosts'); renderDiscord();
+      }).catch(failToast);
+    },
+    hostsRemove: function () {
+      T.core.invoke('zapret_hosts_remove').then(function (r) {
+        S.hosts.installed = r.installed; S.hosts.entries = r.entries; S.hosts.youtube = r.youtube || [];
+        closeModal(); toast('Записи Бунта удалены из hosts'); renderDiscord();
+      }).catch(failToast);
+    },
+    customTargets: function () {
+      if (!inTauri) { onlyInApp(); return; }
+      openModal('Свои сайты для проверки',
+        '<p class="note">Адреса сайтов, по одному на строку, например rutracker.org. Бунт будет открывать их вместе со встроенными, и они войдут в оценку стратегии (например, 7 из 8). Не больше 20.</p><textarea class="field mono ta" id="tgEdit" spellcheck="false" aria-label="Сайты">' + esc((S.discord.custom || []).join('\n')) + '</textarea>',
+        '<button class="btn primary" data-act="customSave">Сохранить</button><button class="btn" data-act="closeModal">Отмена</button>');
+    },
+    customSave: function () {
+      var hosts = $('#tgEdit').value.split('\n');
+      T.core.invoke('zapret_targets_set', { hosts: hosts }).then(function (r) {
+        S.discord.custom = r; closeModal();
+        toast('Сохранено. Старые оценки стратегий считались без этих сайтов, запустите проверку заново.');
+        renderDiscord();
+      }).catch(failToast);
+    },
+    diag: function () {
+      if (!inTauri) { onlyInApp(); return; }
+      openModal('Диагностика', '<p class="note">Проверяем систему…</p>', '<button class="btn" data-act="closeModal">Закрыть</button>');
+      T.core.invoke('zapret_diagnose').then(function (items) {
+        var order = { bad: 0, warn: 1, ok: 2 };
+        items.sort(function (a, b) { return order[a.level] - order[b.level]; });
+        var bad = items.filter(function (x) { return x.level === 'bad'; }).length, warn = items.filter(function (x) { return x.level === 'warn'; }).length;
+        $('#mBody').innerHTML = '<p class="note">' + (bad || warn ? 'Проблем: ' + bad + ', предупреждений: ' + warn + '.' : 'Всё в порядке.') + '</p><div class="diag">' + items.map(function (x) {
+          return '<div class="diag-i ' + x.level + '"><span class="dot"></span><div><b>' + esc(x.title) + '</b>' + (x.detail ? '<small>' + esc(x.detail) + '</small>' : '') + '</div>' + (x.fix ? '<button class="btn sm" data-act="diagFix" data-arg="' + x.fix + '">Исправить</button>' : '') + '</div>';
+        }).join('') + '</div>';
+        $('#mFoot').innerHTML = '<button class="btn" data-act="clearCache" title="Закроет Discord и удалит его кэш">Очистить кэш Discord</button><button class="btn" data-act="closeModal">Закрыть</button>';
+      }).catch(function (e) { $('#mBody').innerHTML = '<p class="note warn">' + esc(String(e)) + '</p>'; });
+    },
+    diagFix: function (id) {
+      T.core.invoke('zapret_diag_fix', { id: id }).then(function () { toast('Исправлено'); ACT.diag(); }).catch(failToast);
+    },
+    clearCache: function () {
+      T.core.invoke('zapret_clear_discord_cache').then(function (r) { toast('Кэш очищен: ' + r.join(', ') + '. Discord закрыт, откройте его снова.'); }).catch(failToast);
+    },
+    svcInstall: function () {
+      if (!inTauri) { onlyInApp(); return; }
+      var d = S.discord;
+      S.svc.busy = true; renderDiscord();
+      addLog({ svc: 'Zapret (Discord)', m: 'Устанавливаем службу Windows со стратегией ' + d.strategy + '…' });
+      T.core.invoke('zapret_service_install', { strategy: d.strategy, game: d.game, ipset: d.ipset, gameTcp: d.tcpPorts, gameUdp: d.udpPorts }).then(function (r) {
+        S.svc.busy = false; S.svc.installed = r.installed; S.svc.running = r.running; S.svc.strategy = r.strategy || ''; S.svc.foreign = r.foreign;
+        S.on.discord = r.running;
+        addLog({ svc: 'Zapret (Discord)', m: 'Служба установлена и работает.', ok: true });
+        toast('Служба установлена. Запрет будет запускаться вместе с Windows.');
+        renderAll();
+      }).catch(function (e) { S.svc.busy = false; renderDiscord(); failToast(e); refreshDiscordExtras(); });
+    },
+    svcRemove: function () {
+      S.svc.busy = true; renderDiscord();
+      T.core.invoke('zapret_service_remove').then(function (r) {
+        S.svc.busy = false; S.svc.installed = r.installed; S.svc.running = r.running; S.svc.strategy = ''; S.svc.foreign = r.foreign;
+        S.on.discord = false;
+        addLog({ svc: 'Zapret (Discord)', m: 'Служба удалена.', ok: true });
+        toast('Служба удалена');
+        renderAll();
+      }).catch(function (e) { S.svc.busy = false; renderDiscord(); failToast(e); });
     },
     stopAll: function () { stopAll(); toast('Все службы остановлены'); },
     restartAll: function () {
@@ -1871,7 +2054,6 @@
     if (d.svc) { setSvc(d.svc, !S.on[d.svc]); return; }
     if (d.sw) {
       set(d.sw, !get(d.sw));
-      if (d.sw === 'discord.game') addLog({ svc: 'Zapret (Discord)', m: 'Game Filter: ' + (S.discord.game ? 'включён' : 'выключен') + '. Нужен перезапуск стратегии.' });
       if (d.sw === 'tgc.autostart') { tgAutostart(S.tgc.autostart); renderAll(); return; }
       if (d.sw.indexOf('w.config.') === 0) { wSaveConfig(); renderAll(); return; }
       if (d.sw.indexOf('dn.') === 0) { renderAll(); return; }
@@ -1880,7 +2062,6 @@
       renderDiscord();
       sync();
       if (d.sw.indexOf('settings.') === 0) saveSettings();
-      if (d.sw === 'discord.game') restartDiscord();
       return;
     }
     var seg = el.closest('[data-seg]');
@@ -1888,7 +2069,8 @@
       set(seg.dataset.seg, d.v);
       if (seg.dataset.seg === 'discord.ipset') addLog({ svc: 'Zapret (Discord)', m: 'IPSet Filter: ' + d.v + '.' });
       renderAll();
-      if (seg.dataset.seg === 'discord.ipset') restartDiscord();
+      if (seg.dataset.seg === 'discord.game') addLog({ svc: 'Zapret (Discord)', m: 'Game Filter: ' + d.v + '.' });
+      if (seg.dataset.seg === 'discord.ipset' || seg.dataset.seg === 'discord.game') restartDiscord();
       return;
     }
     if (d.act && ACT[d.act]) ACT[d.act](d.arg);
@@ -1899,6 +2081,13 @@
     if (el.dataset && el.dataset.bind) {
       set(el.dataset.bind, el.value); renderAll();
       var bn = el.dataset.bind;
+      if (bn === 'discord.tcpPorts' || bn === 'discord.udpPorts') {
+        var pv = String(get(bn)).trim();
+        if (!validPorts(pv)) { toast('Порты указаны неверно. Пример: 1024-65535 или 3478,50000-50100', 'warn'); set(bn, '1024-65535'); renderAll(); return; }
+        set(bn, pv); renderAll();
+        restartDiscord();
+        return;
+      }
       if (bn === 'discord.scanHours') {
         var hh = Number(S.discord.scanHours) || 0;
         S.discord.scanLast = Math.floor(Date.now() / 1000);
@@ -2012,10 +2201,13 @@
       }
       if (!comp('discord').cur) return;
       /* запрет мог остаться включённым (обновление Бунта) или быть включён пользователем до выхода */
+      refreshDiscordExtras();
       T.core.invoke('zapret_status').then(function (st) {
         var d = S.discord;
         if (st.strategy && STRATS.indexOf(st.strategy) >= 0) { d.strategy = st.strategy; d.mode = 'manual'; }
-        if (st.game) d.game = st.game !== 'disabled';
+        if (st.game) d.game = st.game;
+        if (st.game_tcp) d.tcpPorts = st.game_tcp;
+        if (st.game_udp) d.udpPorts = st.game_udp;
         if (st.ipset) d.ipset = st.ipset;
         if (st.running) {
           S.on.discord = true;

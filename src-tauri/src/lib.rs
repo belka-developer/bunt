@@ -14,6 +14,7 @@ mod vless;
 mod vcredist;
 mod telegram;
 mod zapret;
+mod zapret_tools;
 
 use serde::Serialize;
 use std::sync::Mutex;
@@ -237,6 +238,23 @@ pub fn run() {
             zapret::zapret_test_cancel,
             zapret::zapret_scan_get,
             zapret::zapret_scan_set,
+            zapret_tools::zapret_lists,
+            zapret_tools::zapret_list_save,
+            zapret_tools::zapret_ipset_update,
+            zapret_tools::zapret_fakes,
+            zapret_tools::zapret_fake_set,
+            zapret_tools::zapret_hosts_status,
+            zapret_tools::zapret_hosts_preview,
+            zapret_tools::zapret_hosts_apply,
+            zapret_tools::zapret_hosts_remove,
+            zapret_tools::zapret_diagnose,
+            zapret_tools::zapret_diag_fix,
+            zapret_tools::zapret_clear_discord_cache,
+            zapret_tools::zapret_targets_get,
+            zapret_tools::zapret_targets_set,
+            zapret_tools::zapret_service_status,
+            zapret_tools::zapret_service_install,
+            zapret_tools::zapret_service_remove,
             telegram::telegram_status,
             telegram::telegram_start,
             telegram::telegram_stop,
@@ -321,7 +339,10 @@ pub fn run() {
         .run(|app, event| {
             // При выходе останавливаем запущенный запрет, чтобы winws не остался висеть.
             if let tauri::RunEvent::Exit = event {
-                app.state::<zapret::Zapret>().stop();
+                // Запрет, поставленный службой Windows, должен пережить закрытие Бунта
+                if !zapret::our_service() {
+                    app.state::<zapret::Zapret>().stop();
+                }
                 telegram::stop();
                 fptn::shutdown();
                 wg::shutdown();

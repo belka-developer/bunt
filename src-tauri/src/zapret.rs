@@ -167,13 +167,13 @@ fn split_args(s: &str) -> Vec<String> {
     args
 }
 
-fn write_if_missing(path: &Path, text: &str) {
+pub(crate) fn write_if_missing(path: &Path, text: &str) {
     if !path.exists() {
         let _ = fs::write(path, text);
     }
 }
 
-fn prepare_lists(dir: &Path, ipset: &str) -> Result<(), String> {
+pub(crate) fn prepare_lists(dir: &Path, ipset: &str) -> Result<(), String> {
     let lists = dir.join("lists");
     fs::create_dir_all(&lists).map_err(|e| e.to_string())?;
     write_if_missing(&lists.join("ipset-exclude-user.txt"), "203.0.113.113/32\n");
@@ -234,12 +234,12 @@ pub(crate) fn is_ours(path: &str) -> bool {
 }
 
 /// PID процессов winws.exe из нашей папки (чужие, например от службы Flowseal, не трогаем).
-fn our_pids() -> Vec<u32> {
+pub(crate) fn our_pids() -> Vec<u32> {
     list_winws().into_iter().filter(|(_, p)| is_ours(p)).map(|(id, _)| id).collect()
 }
 
 #[cfg(windows)]
-fn sc(args: &[&str]) -> Option<String> {
+pub(crate) fn sc(args: &[&str]) -> Option<String> {
     Command::new("sc")
         .args(args)
         .creation_flags(CREATE_NO_WINDOW)
@@ -249,12 +249,47 @@ fn sc(args: &[&str]) -> Option<String> {
         .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
 }
 #[cfg(not(windows))]
-fn sc(_args: &[&str]) -> Option<String> {
+pub(crate) fn sc(_args: &[&str]) -> Option<String> {
     None
 }
 
-fn service_exists(name: &str) -> bool {
+pub(crate) fn service_exists(name: &str) -> bool {
     sc(&["query", name]).is_some()
+}
+
+/// Служба zapret, поставленная Бунтом из своей папки.
+pub(crate) fn our_service() -> bool {
+    service_exists("zapret") && service_binary("zapret").map(|p| is_ours(&p)).unwrap_or(false)
+}
+
+/// Служба zapret, которую поставили не из Бунта (например, service.bat из Flowseal).
+pub(crate) fn foreign_service() -> bool {
+    service_exists("zapret") && !our_service()
+}
+
+/// Что подставить в `%GameFilterTCP%` и `%GameFilterUDP%`: порт 12 означает «не трогать».
+pub(crate) fn game_ports(game: &str, p: &Ports) -> (String, String) {
+    match game {
+        "all" => (p.tcp.clone(), p.udp.clone()),
+        "tcp" => (p.tcp.clone(), "12".into()),
+        "udp" => ("12".into(), p.udp.clone()),
+        _ => ("12".into(), "12".into()),
+    }
+}
+
+/// Порты для Game Filter: числа и диапазоны через запятую, например `1024-65535` или `3478,50000-50100`.
+pub fn valid_ports(s: &str) -> bool {
+    let s = s.trim();
+    if s.is_empty() || s.len() > 120 {
+        return false;
+    }
+    s.split(',').all(|part| {
+        let port = |x: &str| x.parse::<u32>().map(|n| (1..=65535).contains(&n)).unwrap_or(false);
+        match part.split_once('-') {
+            Some((a, b)) => port(a) && port(b) && a.parse::<u32>().unwrap() <= b.parse::<u32>().unwrap(),
+            None => port(part),
+        }
+    })
 }
 
 pub(crate) fn kill_pid(pid: u32) {
@@ -269,7 +304,7 @@ pub(crate) fn kill_pid(pid: u32) {
     let _ = pid;
 }
 
-fn foreign_winws() -> Vec<String> {
+pub(crate) fn foreign_winws() -> Vec<String> {
     list_winws().into_iter().filter(|(_, p)| !is_ours(p)).map(|(_, p)| p).collect()
 }
 
@@ -301,19 +336,45 @@ pub async fn zapret_start(
     strategy: String,
     game: String,
     ipset: String,
+    game_tcp: Option<String>,
+    game_udp: Option<String>,
 ) -> Result<(), String> {
-    start_inner(&state, &strategy, &game, &ipset).await
+    let ports = Ports::new(game_tcp, game_udp);
+    start_inner(&state, &strategy, &game, &ipset, &ports).await
 }
 
-async fn start_inner(state: &Zapret, strategy: &str, game: &str, ipset: &str) -> Result<(), String> {
+/// Порты Game Filter: отдельно TCP и UDP.
+#[derive(Clone)]
+pub struct Ports {
+    tcp: String,
+    udp: String,
+}
+
+impl Ports {
+    pub fn new(tcp: Option<String>, udp: Option<String>) -> Self {
+        let ok = |v: Option<String>| v.map(|x| x.trim().to_string()).filter(|x| valid_ports(x)).unwrap_or_else(|| "1024-65535".into());
+        Ports { tcp: ok(tcp), udp: ok(udp) }
+    }
+}
+
+async fn start_inner(state: &Zapret, strategy: &str, game: &str, ipset: &str, ports: &Ports) -> Result<(), String> {
     if strategy.contains(['/', '\\']) || strategy.contains("..") || !strategy.starts_with("general") {
         return Err("Неверное имя стратегии".into());
     }
     if !crate::settings::is_admin_sync() {
         return Err("Нужны права администратора. Нажмите «Дать права» в верхней части окна Бунта.".into());
     }
+    if our_service() {
+        // Служба сама держит winws. Выключенную можно запустить, а стратегию службы меняют переустановкой.
+        if !our_pids().is_empty() {
+            return Err("Запрет работает как служба Windows. Чтобы сменить стратегию или настройки, нажмите «Переустановить» в блоке «Служба Windows».".into());
+        }
+        let _ = sc(&["start", "zapret"]);
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+        return if our_pids().is_empty() { Err("Служба zapret не запустилась".into()) } else { Ok(()) };
+    }
     state.stop();
-    if !foreign_winws().is_empty() || service_exists("zapret") {
+    if !foreign_winws().is_empty() || foreign_service() {
         return Err("Запрет уже запущен не из Бунта (служба zapret или другой winws.exe). Остановите его, и Бунт сможет запустить свой.".into());
     }
 
@@ -321,16 +382,12 @@ async fn start_inner(state: &Zapret, strategy: &str, game: &str, ipset: &str) ->
     let bat = fs::read_to_string(dir.join(format!("{strategy}.bat")))
         .map_err(|_| format!("Не найден файл стратегии {strategy}.bat"))?;
     prepare_lists(&dir, ipset)?;
+    crate::zapret_tools::apply_saved_fakes(&dir);
 
     let bin = format!("{}\\", dir.join("bin").display());
     let lists = format!("{}\\", dir.join("lists").display());
-    let (tcp, udp) = match game {
-        "all" => ("1024-65535", "1024-65535"),
-        "tcp" => ("1024-65535", "12"),
-        "udp" => ("12", "1024-65535"),
-        _ => ("12", "12"),
-    };
-    let args = parse_bat(&bat, &bin, &lists, tcp, udp)?;
+    let (tcp, udp) = game_ports(game, ports);
+    let args = parse_bat(&bat, &bin, &lists, &tcp, &udp)?;
 
     let log_path = dir.join("winws.log");
     let log = fs::File::create(&log_path).map_err(|e| e.to_string())?;
@@ -353,7 +410,13 @@ async fn start_inner(state: &Zapret, strategy: &str, game: &str, ipset: &str) ->
     }
     *state.0.lock().unwrap() = Some(child);
     if let Ok(root) = crate::modules::modules_root() {
-        let last = serde_json::json!({ "strategy": strategy, "game": game, "ipset": ipset, "enabled": true });
+        let mut last: serde_json::Value = fs::read_to_string(root.join("zapret.json")).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_else(|| serde_json::json!({}));
+        last["strategy"] = strategy.into();
+        last["game"] = game.into();
+        last["ipset"] = ipset.into();
+        last["game_tcp"] = ports.tcp.clone().into();
+        last["game_udp"] = ports.udp.clone().into();
+        last["enabled"] = true.into();
         let _ = fs::write(root.join("zapret.json"), last.to_string());
     }
     Ok(())
@@ -374,6 +437,16 @@ pub(crate) fn set_enabled(on: bool) {
 /// Останавливает запрет.
 #[tauri::command]
 pub async fn zapret_stop(state: tauri::State<'_, Zapret>) -> Result<(), String> {
+    if our_service() {
+        // Службу не удаляем: она снова запустится вместе с Windows
+        let _ = sc(&["stop", "zapret"]);
+        for _ in 0..10 {
+            if our_pids().is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(300)).await;
+        }
+    }
     state.stop();
     set_enabled(false);
     Ok(())
@@ -387,6 +460,10 @@ pub struct Status {
     strategy: Option<String>,
     game: Option<String>,
     ipset: Option<String>,
+    game_tcp: Option<String>,
+    game_udp: Option<String>,
+    /// Запрет установлен службой Windows из папки Бунта
+    service: bool,
 }
 
 /// Работает ли winws из папки Бунта и с какими настройками он был запущен.
@@ -407,7 +484,7 @@ pub async fn zapret_status(state: tauri::State<'_, Zapret>) -> Result<Status, St
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default();
     let get = |k: &str| last.get(k).and_then(|v| v.as_str()).map(String::from);
-    Ok(Status { running, enabled: last.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false), strategy: get("strategy"), game: get("game"), ipset: get("ipset") })
+    Ok(Status { running, enabled: last.get("enabled").and_then(|v| v.as_bool()).unwrap_or(false), strategy: get("strategy"), game: get("game"), ipset: get("ipset"), game_tcp: get("game_tcp"), game_udp: get("game_udp"), service: our_service() })
 }
 
 #[derive(serde::Serialize)]
@@ -421,7 +498,7 @@ pub struct Foreign {
 /// Запущен ли запрет не из Бунта: служба zapret или winws.exe из другой папки.
 #[tauri::command]
 pub async fn zapret_foreign() -> Result<Foreign, String> {
-    Ok(Foreign { service: service_exists("zapret"), procs: foreign_winws() })
+    Ok(Foreign { service: foreign_service(), procs: foreign_winws() })
 }
 
 /// Останавливает чужой запрет: службу zapret (с удалением, чтобы не вернулась после перезагрузки),
@@ -429,7 +506,7 @@ pub async fn zapret_foreign() -> Result<Foreign, String> {
 #[tauri::command]
 pub async fn zapret_take_over(state: tauri::State<'_, Zapret>) -> Result<(), String> {
     state.stop();
-    if service_exists("zapret") {
+    if foreign_service() {
         let _ = sc(&["stop", "zapret"]);
         for _ in 0..10 {
             match sc(&["query", "zapret"]) {
@@ -475,18 +552,27 @@ static CANCEL: AtomicBool = AtomicBool::new(false);
 
 #[derive(serde::Serialize, Clone, Debug, PartialEq)]
 pub struct Check {
-    id: &'static str,
-    label: &'static str,
-    host: &'static str,
+    id: String,
+    label: String,
+    host: String,
     ok: bool,
     ms: Option<u64>,
 }
 
-async fn probe_one(client: &reqwest::Client, (id, label, host): (&'static str, &'static str, &'static str)) -> Check {
+async fn probe_one(client: &reqwest::Client, id: String, label: String, host: String) -> Check {
     let t = std::time::Instant::now();
     let ok = client.get(format!("https://{host}/")).send().await.is_ok();
     let ms = t.elapsed().as_millis() as u64;
     Check { id, label, host, ok, ms: if ok { Some(ms) } else { None } }
+}
+
+/// Все адреса для проверки: встроенные и добавленные пользователем.
+fn all_targets() -> Vec<(String, String, String)> {
+    let mut v: Vec<(String, String, String)> = TARGETS.iter().map(|&(a, b, c)| (a.to_string(), b.to_string(), c.to_string())).collect();
+    for h in crate::zapret_tools::custom_targets() {
+        v.push((format!("custom:{h}"), h.clone(), h));
+    }
+    v
 }
 
 /// Проверяет все сервисы одновременно. Системный прокси не используем: проверяем сам канал.
@@ -499,11 +585,11 @@ async fn probe_all() -> Result<Vec<Check>, String> {
         .pool_max_idle_per_host(0)
         .build()
         .map_err(|e| e.to_string())?;
-    Ok(futures_util::future::join_all(TARGETS.iter().map(|t| probe_one(&client, *t))).await)
+    Ok(futures_util::future::join_all(all_targets().into_iter().map(|(id, label, host)| probe_one(&client, id, label, host))).await)
 }
 
 fn failed_checks() -> Vec<Check> {
-    TARGETS.iter().map(|&(id, label, host)| Check { id, label, host, ok: false, ms: None }).collect()
+    all_targets().into_iter().map(|(id, label, host)| Check { id, label, host, ok: false, ms: None }).collect()
 }
 
 fn now_secs() -> u64 {
@@ -612,6 +698,8 @@ pub async fn zapret_test(
     game: String,
     ipset: String,
     stop_on_full: bool,
+    game_tcp: Option<String>,
+    game_udp: Option<String>,
 ) -> Result<serde_json::Value, String> {
     if !crate::settings::is_admin_sync() {
         return Err("Нужны права администратора. Нажмите «Дать права» в верхней части окна Бунта.".into());
@@ -620,7 +708,8 @@ pub async fn zapret_test(
         return Err("Проверка уже идёт".into());
     }
     CANCEL.store(false, Ordering::SeqCst);
-    let result = run_test(&app, &state, &strategies, &game, &ipset, stop_on_full).await;
+    let ports = Ports::new(game_tcp, game_udp);
+    let result = run_test(&app, &state, &strategies, &game, &ipset, &ports, stop_on_full).await;
     BUSY.store(false, Ordering::SeqCst);
     result?;
     Ok(zapret_results())
@@ -632,9 +721,13 @@ async fn run_test(
     strategies: &[String],
     game: &str,
     ipset: &str,
+    ports: &Ports,
     stop_on_full: bool,
 ) -> Result<(), String> {
-    if !foreign_winws().is_empty() || service_exists("zapret") {
+    if our_service() {
+        return Err("Запрет установлен как служба Windows. Удалите службу в блоке «Служба Windows», чтобы проверять стратегии.".into());
+    }
+    if !foreign_winws().is_empty() || foreign_service() {
         return Err("Запрет уже запущен не из Бунта (служба zapret или другой winws.exe). Остановите его, и Бунт сможет проверить стратегии.".into());
     }
     let prev_raw = crate::modules::modules_root().ok().and_then(|r| fs::read_to_string(r.join("zapret.json")).ok());
@@ -650,7 +743,7 @@ async fn run_test(
             break;
         }
         let _ = app.emit("zapret-test", TestProgress { index: i, total, name: name.clone(), phase: "start", ok_count: None });
-        let (checks, error) = match start_inner(state, name, game, ipset).await {
+        let (checks, error) = match start_inner(state, name, game, ipset, ports).await {
             Ok(()) => {
                 tokio::time::sleep(Duration::from_millis(800)).await;
                 match probe_all().await {
@@ -686,7 +779,7 @@ async fn run_test(
         let s = |k: &str, d: &str| prev.get(k).and_then(|v| v.as_str()).unwrap_or(d).to_string();
         let strategy = s("strategy", "");
         if !strategy.is_empty() {
-            let _ = start_inner(state, &strategy, &s("game", "disabled"), &s("ipset", "none")).await;
+            let _ = start_inner(state, &strategy, &s("game", "disabled"), &s("ipset", "none"), &Ports::new(Some(s("game_tcp", "")), Some(s("game_udp", "")))).await;
         }
     }
     Ok(())
@@ -774,7 +867,7 @@ mod tests {
 
     #[test]
     fn merge_keeps_same_version_only() {
-        let c = vec![Check { id: "discord", label: "Discord", host: "discord.com", ok: true, ms: Some(80) }];
+        let c = vec![Check { id: "discord".into(), label: "Discord".into(), host: "discord.com".into(), ok: true, ms: Some(80) }];
         let a = merge_store(serde_json::Value::Null, "1.0", 10, "general", &c, None);
         let b = merge_store(a.clone(), "1.0", 20, "general (ALT)", &c, None);
         assert_eq!(b["results"].as_object().unwrap().len(), 2);

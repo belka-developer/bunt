@@ -142,19 +142,36 @@
                 </div>
                 <div class="panel">
                   <h3>Фильтры</h3>
-                  <div class="row"><div class="lbl">Game Filter<small>Обход для игр и других сервисов на TCP и UDP, порты выше 1023. После переключения нужен перезапуск стратегии.</small></div><button class="sw" role="switch" data-sw="discord.game" aria-label="Game Filter"></button></div>
+                                    <div class="row"><div class="lbl">Game Filter<small id="gameDesc"></small></div>
+                    <div class="seg" data-seg="discord.game"><button data-v="disabled">Выкл</button><button data-v="all">TCP и UDP</button><button data-v="tcp">TCP</button><button data-v="udp">UDP</button></div>
+                  </div>
+                  <div class="row" id="gamePorts" hidden><div class="lbl">Порты Game Filter<small>Числа и диапазоны через запятую, например 1024-65535 или 3478,50000-50100</small></div>
+                    <div class="inl"><input class="field mono" id="gpTcp" data-bind="discord.tcpPorts" placeholder="TCP" aria-label="Порты TCP" style="width:140px"><input class="field mono" id="gpUdp" data-bind="discord.udpPorts" placeholder="UDP" aria-label="Порты UDP" style="width:140px"></div>
+                  </div>
                   <div class="row"><div class="lbl">IPSet Filter<small id="ipsetDesc"></small></div>
                     <div class="seg" data-seg="discord.ipset"><button data-v="none">none</button><button data-v="loaded">loaded</button><button data-v="any">any</button></div>
                   </div>
                   <p class="note warn" id="ipsetWarn" hidden>Режим any затрагивает все сайты. Включайте его на время проверки.</p>
                 </div>
                 <div class="panel">
-                  <div class="panel-head"><h3>Свои списки</h3><span class="note">Файлы создаются при первом запуске</span></div>
+                  <div class="panel-head"><h3>Свои списки</h3><span class="note">Применяются при следующем запуске запрета</span></div>
                   <div id="lists"></div>
-                  <div class="row"><div class="lbl">Список ipset-all.txt из репозитория<small>Обновлён: <span id="ipsetUpd"></span></small></div><button class="btn sm" data-act="updIpset"><svg class="ic"><use href="#i-refresh"/></svg>Обновить</button></div>
+                  <div class="row"><div class="lbl">Список IP из репозитория Flowseal<small>Обновлён: <span id="ipsetUpd"></span>. Используется в режиме IPSet loaded</small></div><button class="btn sm" data-act="updIpset"><svg class="ic"><use href="#i-refresh"/></svg>Обновить</button></div>
                 </div>
               </div>
               <div class="stack">
+                <div class="panel">
+                  <div class="panel-head"><h3>Служба Windows</h3><span class="tag" id="svcTag"></span></div>
+                  <p class="note" id="svcDesc"></p>
+                  <div class="inl mt-s" id="svcBtns" style="justify-content:flex-start"></div>
+                </div>
+                <div class="panel">
+                  <h3>Инструменты</h3>
+                  <div class="row"><div class="lbl">Фейки<small id="fakeDesc">Какой образец маскирует голос и игры Discord</small></div><button class="btn sm" data-act="fakes">Настроить</button></div>
+                  <div class="row"><div class="lbl">Записи hosts<small id="hostsDesc"></small></div><button class="btn sm" data-act="hosts">Настроить</button></div>
+                  <div class="row"><div class="lbl">Свои сайты для проверки<small id="customDesc"></small></div><button class="btn sm" data-act="customTargets">Изменить</button></div>
+                  <div class="row"><div class="lbl">Диагностика<small>Ищет частые причины, почему запрет не работает, и чистит кэш Discord</small></div><button class="btn sm" data-act="diag">Запустить</button></div>
+                </div>
                 <div class="panel">
                   <h3>Компонент</h3>
                   <div class="row"><span class="lbl">Версия</span><span class="val" id="dVer"></span></div>

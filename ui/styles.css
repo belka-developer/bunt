@@ -428,3 +428,15 @@ body.app .view { height: 100vh; overflow-y: auto; }
 .strat .tip .tr b { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
 .strat .tip .tn { color: var(--faint); font-size: 11px; }
 .strat .tip .tr + .tn { margin-top: 3px; padding-top: 6px; border-top: 1px solid var(--line); }
+
+/* Вкладка Discord: службы, hosts, диагностика */
+.hosts-pre { max-height: 240px; overflow: auto; margin: 10px 0 0; padding: 10px 12px; background: var(--win); border: 1px solid var(--line-2); border-radius: 8px; font-size: 12px; line-height: 1.5; white-space: pre; }
+.diag { display: grid; gap: 2px; max-height: 340px; overflow: auto; margin-top: 8px; }
+.diag-i { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 9px 0; border-top: 1px solid var(--line); }
+.diag-i:first-child { border-top: 0; }
+.diag-i .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; background: var(--accent); }
+.diag-i.warn .dot { background: var(--warn); }
+.diag-i.bad .dot { background: var(--bad); }
+.diag-i b { font-weight: 500; }
+.diag-i small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
+.diag-i.ok b { color: var(--muted); font-weight: 400; }

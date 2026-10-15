@@ -17,10 +17,10 @@ const MANIFEST: &str = ".bunt-manifest.json";
 /// Файлы, которые меняются при обычной работе, в хеши не входят.
 fn skipped(rel: &str) -> bool {
     let r = rel.replace('\\', "/").to_lowercase();
-    r == MANIFEST || r.starts_with("logs/") || r.contains("__pycache__/") || r.ends_with(".pyc") || r == "winws.log" || r == "lists/ipset-all.txt" || r.ends_with("-user.txt")
+    r == MANIFEST || r.starts_with("logs/") || r.contains("__pycache__/") || r.ends_with(".pyc") || r == "winws.log" || r == "lists/ipset-all.txt" || r == "lists/ipset-all.txt.backup" || r == "bin/active_discord_udp.bin" || r == "bin/active_game_udp.bin" || r.ends_with("-user.txt")
 }
 
-fn hash_file(path: &Path) -> Result<String, String> {
+pub(crate) fn hash_file(path: &Path) -> Result<String, String> {
     let mut f = fs::File::open(path).map_err(|e| e.to_string())?;
     let mut h = Sha256::new();
     let mut buf = [0u8; 64 * 1024];
