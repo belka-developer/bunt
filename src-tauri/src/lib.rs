@@ -235,6 +235,8 @@ pub fn run() {
             zapret::zapret_probe,
             zapret::zapret_test,
             zapret::zapret_test_cancel,
+            zapret::zapret_scan_get,
+            zapret::zapret_scan_set,
             telegram::telegram_status,
             telegram::telegram_start,
             telegram::telegram_stop,

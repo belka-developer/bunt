@@ -46,7 +46,7 @@
   var S = {
     page: 'home',
     on: { discord: false, telegram: false, fptn: false, vless: false, wg: false },
-    discord: { mode: 'auto', strategy: 'general (ALT2)', game: false, ipset: 'none', results: {}, free: null, autoupd: true, ipsetUpdated: 'сегодня, 09:12' },
+    discord: { mode: 'auto', strategy: 'general (ALT2)', game: false, ipset: 'none', results: {}, free: null, scanHours: '0', scanLast: 0, autoupd: true, ipsetUpdated: 'сегодня, 09:12' },
     telegram: { port: '1443', link: '' },
     fc: { token_in: '', bypass_method: 'sni-spoofing-yandex-26-4', strategy: 'rolling-tunnel', sni: 'google.com', mtu: '1420', preferred_server: '', tun_name: 'FPTN', tun_ip: '10.0.0.1', exclude_networks: '10.0.0.0/8,192.168.0.0/16', include_networks: '', split: false, split_mode: 'exclude', split_domains: '', adblock: true, blacklist: '', auto_gateway: true, remove_adapter: true, autostart: false },
     fptn: { tokenSet: false, hint: '', servers: [], tokenError: '', adapter: { exists: false, status: '', description: '' }, dirty: false, busy: false, repairMsg: '', logOpen: false, log: '' },
@@ -203,6 +203,10 @@
     $('#btnCheck').disabled = testing;
     $('#btnCancel').hidden = !testing;
     $('#btnProbe').disabled = testing || probing;
+    var sh = Number(d.scanHours) || 0;
+    $('#scanInfo').textContent = !sh ? 'Раз в выбранное время Бунт проверяет текущую стратегию и, если что-то перестало открываться, подбирает другую'
+      : (S.on.discord ? 'Последняя: ' + (d.scanLast ? fmtAt(d.scanLast) : 'ещё не было') + '. Если что-то перестанет открываться, Бунт подберёт другую стратегию'
+        : 'Работает, пока включён запрет и открыт Бунт');
     $('#stratLine').hidden = testing;
     $('#stratWhen').hidden = testing;
     $('#testBox').hidden = !testing;
@@ -288,6 +292,40 @@
     var el = $('.strat.scan');
     if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
   }
+  /* автопроверка по расписанию: смотрим текущую стратегию, при сбое подбираем другую */
+  function scanSave(patch) {
+    if (inTauri) T.core.invoke('zapret_scan_set', patch).catch(function () {});
+  }
+  function scanDue() {
+    var d = S.discord, h = Number(d.scanHours) || 0;
+    if (!inTauri || !h || !S.on.discord || !installed('discord') || testing || probing || S.admin === false || vpnRunning()) return false;
+    return Math.floor(Date.now() / 1000) - d.scanLast >= h * 3600;
+  }
+  function autoScan() {
+    var d = S.discord, h = Number(d.scanHours) || 0, now = Math.floor(Date.now() / 1000);
+    d.scanLast = now; scanSave({ last: now });
+    probing = true; renderDiscord();
+    T.core.invoke('zapret_probe').then(function (r) {
+      probing = false;
+      if (r.strategy) d.results[r.strategy] = { at: r.at, checks: r.checks, error: null };
+      var n = r.checks.filter(function (c) { return c.ok; }).length;
+      if (n === r.checks.length) {
+        addLog({ svc: 'Zapret (Discord)', m: 'Автопроверка: на стратегии ' + d.strategy + ' открываются все сервисы.', ok: true });
+        renderDiscord();
+      } else if (n === 0) {
+        /* скорее всего нет интернета: не перебираем стратегии, повторим через 15 минут */
+        var back = Math.max(0, h * 3600 - 900);
+        d.scanLast = now - back; scanSave({ last: d.scanLast });
+        addLog({ svc: 'Zapret (Discord)', m: 'Автопроверка: ни один сервис не ответил. Возможно, нет интернета. Повторим позже.' });
+        renderDiscord();
+      } else {
+        addLog({ svc: 'Zapret (Discord)', m: 'Автопроверка: на стратегии ' + d.strategy + ' открывается ' + n + ' из ' + r.checks.length + '. Подбираем другую…' });
+        renderDiscord();
+        runTest(false);
+      }
+    }).catch(function () { probing = false; renderDiscord(); });
+  }
+  setInterval(function () { if (scanDue()) autoScan(); }, 60000);
   function vpnRunning() { return VPNS.filter(function (id) { return S.on[id]; }).length > 0; }
 
   function renderTelegram() {
@@ -1861,6 +1899,13 @@
     if (el.dataset && el.dataset.bind) {
       set(el.dataset.bind, el.value); renderAll();
       var bn = el.dataset.bind;
+      if (bn === 'discord.scanHours') {
+        var hh = Number(S.discord.scanHours) || 0;
+        S.discord.scanLast = Math.floor(Date.now() / 1000);
+        scanSave({ hours: hh, last: S.discord.scanLast });
+        toast(hh ? 'Автопроверка стратегий включена' : 'Автопроверка стратегий выключена');
+        renderDiscord();
+      }
       if (bn.indexOf('v.') === 0 && bn.indexOf('v.rule.') !== 0) { vApplyNote(); vSave(); }
     }
   });
@@ -1985,6 +2030,7 @@
     }).catch(function () { renderAll(); });
     T.event.listen('zapret-test', function (e) { onTestEvent(e.payload || {}); });
     T.core.invoke('zapret_results').then(function (r) { applyResults(r); renderDiscord(); }).catch(function () {});
+    T.core.invoke('zapret_scan_get').then(function (c) { if (c) { S.discord.scanHours = String(c.hours || 0); S.discord.scanLast = c.last || 0; renderDiscord(); sync(); } }).catch(function () {});
     T.event.listen('module-progress', function (e) {
       var p = e.payload || {}, c = comp(p.id);
       if (c && c.busy != null && p.total) { c.busy = Math.min(99, Math.round(p.downloaded / p.total * 100)); if (p.stage) c.stage = p.stage; renderAll(); }

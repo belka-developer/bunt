@@ -698,6 +698,40 @@ pub fn zapret_test_cancel() {
     CANCEL.store(true, Ordering::SeqCst);
 }
 
+// ───────────────────────── Автопроверка по расписанию ─────────────────────────
+
+/// Настройка автопроверки: через сколько часов проверять (0 выключено) и когда проверяли в последний раз.
+#[derive(serde::Serialize, serde::Deserialize, Default, Clone, Debug, PartialEq)]
+pub struct ScanCfg {
+    #[serde(default)]
+    hours: u64,
+    #[serde(default)]
+    last: u64,
+}
+
+fn scan_path() -> Result<PathBuf, String> {
+    Ok(crate::modules::modules_root()?.join("zapret-scan.json"))
+}
+
+#[tauri::command]
+pub fn zapret_scan_get() -> ScanCfg {
+    scan_path().ok().and_then(|p| fs::read_to_string(p).ok()).and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+}
+
+/// Сохраняет то, что передано: интервал в часах (не больше 30 суток) и/или время последней проверки.
+#[tauri::command]
+pub fn zapret_scan_set(hours: Option<u64>, last: Option<u64>) -> Result<ScanCfg, String> {
+    let mut cfg = zapret_scan_get();
+    if let Some(h) = hours {
+        cfg.hours = h.min(720);
+    }
+    if let Some(l) = last {
+        cfg.last = l;
+    }
+    fs::write(scan_path()?, serde_json::to_string(&cfg).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    Ok(cfg)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -758,5 +792,12 @@ mod tests {
         ids.dedup();
         assert_eq!(ids.len(), TARGETS.len());
         assert_eq!(failed_checks().len(), 6);
+    }
+
+    #[test]
+    fn scan_cfg_defaults_and_partial_json() {
+        assert_eq!(ScanCfg::default(), ScanCfg { hours: 0, last: 0 });
+        let c: ScanCfg = serde_json::from_str("{\"hours\":6}").unwrap();
+        assert_eq!(c, ScanCfg { hours: 6, last: 0 });
     }
 }

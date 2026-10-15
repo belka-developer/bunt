@@ -161,6 +161,8 @@
                   <div class="row"><span class="lbl">Источник</span><span class="val">Flowseal/zapret-discord-youtube</span></div>
                   <div class="row"><span class="lbl">Лицензия</span><span class="val">MIT</span></div>
                   <div class="row"><div class="lbl">Автопроверка обновлений<small>Проверять новые релизы при запуске</small></div><button class="sw" role="switch" data-sw="discord.autoupd" aria-label="Автопроверка обновлений"></button></div>
+                  <div class="row"><div class="lbl">Автопроверка стратегий<small id="scanInfo"></small></div>
+                    <select class="field" data-bind="discord.scanHours" aria-label="Как часто проверять стратегии" style="width:150px"><option value="0">Выключена</option><option value="1">Каждый час</option><option value="3">Раз в 3 часа</option><option value="6">Раз в 6 часов</option><option value="12">Раз в 12 часов</option><option value="24">Раз в сутки</option><option value="72">Раз в 3 дня</option><option value="168">Раз в неделю</option></select></div>
                   <div class="row"><div class="lbl">Проверить сейчас</div><button class="btn sm" data-act="checkUpdates"><svg class="ic"><use href="#i-refresh"/></svg>Проверить</button></div>
                 </div>
               </div>
