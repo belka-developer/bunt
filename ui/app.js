@@ -801,7 +801,13 @@
     tBusy = true;
     var n = SVC.telegram.name;
     if (on) addLog({ svc: n, m: 'Запуск прокси…' });
-    T.core.invoke(on ? 'telegram_start' : 'telegram_stop').then(function (st) {
+    /* поля настроек могли быть изменены, но не сохранены: перед запуском сохраняем их, иначе applyTg вернёт старый адрес */
+    var pre = Promise.resolve();
+    if (on && installed('telegram')) {
+      var payload = tgPayload();
+      if (typeof payload !== 'string') pre = T.core.invoke('telegram_config_set', { config: payload });
+    }
+    pre.then(function () { return T.core.invoke(on ? 'telegram_start' : 'telegram_stop'); }).then(function (st) {
       applyTg(st);
       S.on.telegram = on;
       addLog(on ? { m: 'Прокси запущен на порту ' + st.port + '. Добавьте ссылку в Telegram один раз.', ok: true } : { svc: n, m: 'Остановлено.' });
