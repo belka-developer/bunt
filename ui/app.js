@@ -53,13 +53,14 @@
     v: { profiles: [], config: { active: '', mode: 'tun', socks_port: 10808, http_port: 10809, default_action: 'proxy', bypass_lan: true, dns: ['1.1.1.1', '8.8.8.8'], rules: [], subs: [], autoconnect: false, keep_on_exit: false }, running: false, tun: false, dirty: false, adapter: false, busy: false, ping: {}, pinging: false, repairMsg: '', logOpen: false, log: '', view: '', viewName: '', rule: { kind: 'app', value: '', action: 'proxy' }, socks: '10808', http: '10809', dns_text: '1.1.1.1, 8.8.8.8', loaded: false },
     dn: { presets: [], adapters: [], active: '', has_snapshot: false, config: { last: '', custom: ['', ''], ipv6: true, doh: false }, vpn: false, doh_supported: false, busy: false, loaded: false, off: [], ping: {}, pinging: false, c1: '', c2: '', msg: '' },
     w: { profiles: [], config: { active: '', autoconnect: false, keep_on_exit: false, split_default: true }, running: false, tunnel: '', dirty: false, adapter: { exists: false, status: '', description: '' }, stats: { handshake_ago: null, rx: 0, tx: 0 }, busy: false, repairMsg: '', logOpen: false, log: '', paste: false, imp_name: 'wg0', imp_text: '', view: '', viewName: '' },
-    tgc: { autostart: false, host: '127.0.0.1', port: '1443', secret: '', dc_ip: '2:149.154.167.220\n4:149.154.167.220', verbose: false, buf_kb: '256', pool_size: '4', log_max_mb: '5', cfproxy: true, h2: true, cf_domain_on: false, cf_domain: '', cf_worker_on: false, cf_worker: '', force_test_dc: false, no_secure: false, fake_tls_domain: '' },
+    tgc: { autostart: false, host: '127.0.0.1', port: '1443', secret: '', dc_ip: '2:149.154.167.220\n4:149.154.167.220', verbose: false, buf_kb: '256', pool_size: '4', log_max_mb: '5', log_backups: '1', cfproxy: true, h2: true, cf_domain_on: false, cf_domain: '', cf_worker_on: false, cf_worker: '', force_test_dc: false, no_secure: false, fake_tls_domain: '' },
     lists: {
       general: { file: 'list-general-user.txt', title: 'Свои домены', hint: 'Домены для обхода, по одному на строку. Поддомены учитываются автоматически.', text: '# по одному домену на строку\nexample.org\ncdn.example.org\n' },
       exclude: { file: 'list-exclude-user.txt', title: 'Исключения доменов', hint: 'Домены, которые не нужно обрабатывать, даже если их IP есть в ipset-all.txt.', text: '' },
       ipset: { file: 'ipset-all.txt', title: 'Свои IP и подсети', hint: 'IP-адреса и подсети для обхода, по одному на строку.', text: '# IP и подсети\n203.0.113.0/24\n' },
       ipsetEx: { file: 'ipset-exclude-user.txt', title: 'Исключения IP', hint: 'IP-адреса и подсети, которые не нужно обрабатывать.', text: '' }
     },
+    tgp: { fw: { open: false, stale: false, known: false }, qr: { on: false, svg: '', url: '', until: 0 }, stats: null, check: null, checking: false },
     svc: { installed: false, running: false, strategy: '', foreign: false, busy: false },
     hosts: { installed: false, entries: 0, youtube: [], lines: [] },
     prof: {},
@@ -390,7 +391,60 @@
     var p = String(S.tgc.port).replace(/\D/g, '') || '1443';
     $('#tgLink').value = S.telegram.link || (inTauri ? '' : 'tg://proxy?server=127.0.0.1&port=' + p + '&secret=dd00000000000000000000000000000000');
     var tv = $('#tVer'); if (tv) tv.textContent = comp('telegram').cur || '–';
+    renderTgExtras();
   }
+
+  /* телефон в локальной сети, QR-код, состояние прокси */
+  function tgIsLan() { return ['127.0.0.1', 'localhost', '::1', ''].indexOf(String(S.tgc.host).trim()) < 0; }
+  function renderTgExtras() {
+    var sw = $('#tgLanSw'); if (!sw) return;
+    var lan = tgIsLan(), p = S.tgp;
+    sw.setAttribute('aria-checked', lan ? 'true' : 'false');
+    $('#tgLanDesc').textContent = lan ? 'Прокси слышит все устройства в вашей сети (адрес ' + S.tgc.host + '). Подключайте только доверенные сети.' : 'Сейчас прокси работает только на этом компьютере. Включите, чтобы подключить телефон.';
+    $('#tgPhoneHint').textContent = lan ? 'Телефон должен быть в той же сети Wi-Fi. Откройте порты, нажмите «Показать QR-код» и наведите на него камеру.' : 'Чтобы использовать запрет на телефоне, включите «Доступ из локальной сети» выше.';
+    var fw = p.fw, tag = $('#tgFwTag'), btn = $('#tgFwBtn');
+    tag.className = 'tag ' + (fw.open ? 'ok' : fw.stale ? 'warn' : '');
+    tag.textContent = !fw.known ? '…' : fw.open ? 'Открыты' : fw.stale ? 'Устарели' : 'Закрыты';
+    $('#tgFwDesc').textContent = fw.stale ? 'Порт прокси изменился, обновите правило' : 'Открываются только для устройств вашей подсети. Нужны права администратора';
+    btn.textContent = fw.open ? 'Закрыть порты' : fw.stale ? 'Обновить порты' : 'Открыть порты';
+    btn.disabled = !lan || !inTauri;
+    $('#tgQrBtn').textContent = p.qr.on ? 'Скрыть QR-код' : 'Показать QR-код';
+    $('#tgQrBtn').disabled = !lan || !inTauri;
+    $('#tgQrBox').hidden = !p.qr.on;
+    if (p.qr.on) {
+      $('#tgQrImg').innerHTML = p.qr.svg;
+      $('#tgQrUrl').textContent = p.qr.url;
+      var left = Math.max(0, Math.round((p.qr.until - Date.now()) / 1000));
+      $('#tgQrNote').textContent = 'Наведите камеру телефона на код. Страница отключится через ' + Math.floor(left / 60) + ':' + pad2(left % 60) + ', потому что на ней виден секрет.' + (fw.open ? '' : ' Порты в брандмауэре закрыты, телефон может не подключиться.');
+    }
+    var st = p.stats;
+    $('#tgStats').textContent = st ? 'Подключений: ' + st.total + ', сейчас: ' + st.active + '. Трафик: ↑ ' + st.up + ', ↓ ' + st.down + '. Через Cloudflare: ' + st.cf + ', ошибок: ' + st.err + '. Обновлено ' + (st.at || '').slice(11, 16) + '.' : (S.on.telegram ? 'Статистика появится через минуту после запуска: прокси пишет её в лог раз в минуту.' : 'Прокси выключен.');
+    $('#tgCheckBtn').disabled = p.checking;
+    var c = p.check;
+    $('#tgChecks').innerHTML = !c ? '' :
+      '<div class="tgt"><span>Прокси запущен</span><span class="tag ' + (c.running ? 'ok' : 'bad') + '">' + (c.running ? 'Да' : 'Нет') + '</span></div>' +
+      '<div class="tgt"><span>Порт отвечает</span><span class="tag ' + (c.listening ? 'ok' : 'bad') + '">' + (c.listening ? 'Да' : 'Нет') + '</span></div>' +
+      c.hosts.map(function (x) { return '<div class="tgt"><span class="mono">' + esc(x.host) + '</span><span class="ms">' + (x.ok ? x.ms + ' мс' : '') + '</span><span class="tag ' + (x.ok ? 'ok' : 'bad') + '">' + (x.ok ? 'Доступен' : 'Нет ответа') + '</span></div>'; }).join('');
+  }
+  function refreshTgExtras() {
+    if (!inTauri || !installed('telegram')) return;
+    T.core.invoke('telegram_firewall_status').then(function (r) { S.tgp.fw = { open: r.open, stale: r.stale, known: true }; renderTgExtras(); }).catch(function () { S.tgp.fw.known = true; renderTgExtras(); });
+    T.core.invoke('telegram_stats').then(function (r) { S.tgp.stats = r; renderTgExtras(); }).catch(function () {});
+  }
+  function stopQr() {
+    if (!S.tgp.qr.on) return;
+    S.tgp.qr.on = false;
+    if (inTauri) T.core.invoke('telegram_share_stop').catch(function () {});
+  }
+  setInterval(function () {
+    if (S.tgp.qr.on) {
+      if (Date.now() >= S.tgp.qr.until) { stopQr(); toast('Страница для телефона отключена'); }
+      if (S.page === 'telegram') renderTgExtras();
+    }
+  }, 1000);
+  setInterval(function () {
+    if (inTauri && S.page === 'telegram' && S.on.telegram) T.core.invoke('telegram_stats').then(function (r) { S.tgp.stats = r; renderTgExtras(); }).catch(function () {});
+  }, 15000);
 
   /* упрощённый разбор описания релиза: заголовки, списки, жирный текст */
   function md(src) {
@@ -550,6 +604,7 @@
     S.page = page;
     if (page === 'dns') loadDn();
     if (page === 'discord') refreshDiscordExtras();
+    if (page === 'telegram') refreshTgExtras(); else stopQr();
     $$('[data-page]').forEach(function (s) { s.hidden = s.dataset.page !== page; });
     $$('.nav').forEach(function (n) { if (n.dataset.go === page) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current'); });
     try { history.replaceState(null, '', '#' + page); } catch (e) { /* без адреса */ }
@@ -646,7 +701,7 @@
   }
   /* Telegram: локальный MTProto-прокси, права администратора не нужны */
   var tBusy = false;
-  var TGN = ['port', 'buf_kb', 'pool_size', 'log_max_mb'];
+  var TGN = ['port', 'buf_kb', 'pool_size', 'log_max_mb', 'log_backups'];
   function applyTg(st) {
     var c = st.config || {};
     Object.keys(S.tgc).forEach(function (k) { if (c[k] !== undefined) S.tgc[k] = TGN.indexOf(k) >= 0 ? String(c[k]) : c[k]; });
@@ -659,6 +714,11 @@
     for (var i = 0; i < TGN.length; i++) if (!(o[TGN[i]] >= 0)) return TGN[i];
     return o;
   }
+  function tgPayloadOrNull() {
+    var o = tgPayload();
+    if (typeof o === 'string') { toast('Проверьте числовые поля: ' + o, 'warn'); return null; }
+    return o;
+  }
   function tgSave() {
     if (!inTauri || !installed('telegram')) return;
     var o = tgPayload();
@@ -668,6 +728,7 @@
       S.on.telegram = st.running;
       addLog({ svc: SVC.telegram.name, m: 'Настройки применены' + (st.running ? ', прокси перезапущен. Если менялись порт или секрет, добавьте новую ссылку в Telegram.' : '.') });
       toast('Настройки применены');
+      refreshTgExtras();
     }).catch(function (err) { toast(String(err).slice(0, 220), 'warn'); S.on.telegram = false; }).then(renderAll);
   }
   function tgAutostart(on) {
@@ -2010,6 +2071,62 @@
     fSave: function () { fSave(); }, fSaveToken: fSaveToken, fServer: fServer, fClearToken: fClearToken, fReset: fReset, fRepair: fRepair, fLog: fLog,
     fAdapter: function (a) { fAdapter(a); }, fTakeOver: function (a) { fTakeOver(a); },
     tgSave: tgSave, tgReset: tgReset, tgSecret: tgSecret,
+    tgLan: function () {
+      var on = !tgIsLan();
+      S.tgc.host = on ? '0.0.0.0' : '127.0.0.1';
+      if (!on) stopQr();
+      renderAll();
+      if (inTauri && installed('telegram')) {
+        var payload = tgPayloadOrNull();
+        if (!payload) { S.tgc.host = on ? '127.0.0.1' : '0.0.0.0'; renderAll(); return; }
+        T.core.invoke('telegram_config_set', { config: payload }).then(function (st) {
+          applyTg(st); S.on.telegram = st.running;
+          addLog({ svc: SVC.telegram.name, m: on ? 'Доступ из локальной сети включён.' : 'Доступ из локальной сети выключен.' });
+          toast(on ? 'Доступ из локальной сети включён' : 'Прокси снова доступен только на этом компьютере');
+          refreshTgExtras();
+        }).catch(function (err) { S.tgc.host = on ? '127.0.0.1' : '0.0.0.0'; toast(String(err).slice(0, 220), 'warn'); }).then(renderAll);
+      }
+    },
+    tgFw: function () {
+      if (S.admin === false) { toast('Нужны права администратора. Нажмите «Дать права» вверху окна.', 'warn'); return; }
+      var open = !S.tgp.fw.open;
+      $('#tgFwBtn').disabled = true;
+      T.core.invoke('telegram_firewall_set', { open: open || S.tgp.fw.stale }).then(function (r) {
+        S.tgp.fw = { open: r.open, stale: r.stale, known: true };
+        toast(r.open ? 'Порты открыты для вашей сети' : 'Порты закрыты');
+      }).catch(function (e) { toast(String(e).slice(0, 220), 'warn'); }).then(renderTgExtras);
+    },
+    tgQr: function () {
+      if (S.tgp.qr.on) { stopQr(); renderTgExtras(); return; }
+      if (!S.on.telegram) toast('Прокси сейчас выключен. Включите запрет Telegram, иначе телефону не к чему подключаться.', 'warn');
+      T.core.invoke('telegram_share_start').then(function (r) {
+        S.tgp.qr = { on: true, svg: r.svg, url: r.url, until: Date.now() + r.expires_secs * 1000 };
+        renderTgExtras();
+      }).catch(function (e) { toast(String(e).slice(0, 240), 'warn'); });
+    },
+    tgOpen: function () {
+      if (!inTauri) { onlyInApp(); return; }
+      if (!S.on.telegram) { toast('Сначала включите запрет Telegram.', 'warn'); return; }
+      T.core.invoke('telegram_open_link').catch(function (e) { toast(String(e).slice(0, 200), 'warn'); });
+    },
+    tgCheck: function () {
+      if (!inTauri) { onlyInApp(); return; }
+      S.tgp.checking = true; renderTgExtras();
+      T.core.invoke('telegram_check').then(function (r) { S.tgp.check = r; }).catch(function (e) { toast(String(e).slice(0, 200), 'warn'); }).then(function () { S.tgp.checking = false; renderTgExtras(); });
+    },
+    tgRestart: function () {
+      if (!inTauri || !installed('telegram')) { onlyInApp(); return; }
+      T.core.invoke('telegram_restart').then(function (st) {
+        applyTg(st); S.on.telegram = st.running; toast('Прокси перезапущен'); addLog({ svc: SVC.telegram.name, m: 'Прокси перезапущен.', ok: true });
+      }).catch(function (e) { toast(String(e).slice(0, 220), 'warn'); }).then(renderAll);
+    },
+    tgLog: function () {
+      if (!inTauri) { onlyInApp(); return; }
+      T.core.invoke('telegram_log', { lines: 200 }).then(function (text) {
+        openModal('Лог прокси', '<pre class="hosts-pre mono" id="tgLogText" style="max-height:380px">' + esc(text) + '</pre>', '<button class="btn" data-act="tgLog">Обновить</button><button class="btn" data-act="closeModal">Закрыть</button>');
+        var pre = $('#tgLogText'); if (pre) pre.scrollTop = pre.scrollHeight;
+      }).catch(function (e) { toast(String(e).slice(0, 200), 'warn'); });
+    },
     copyTg: function () { copyText($('#tgLink').value, 'Ссылка скопирована'); },
     vImport: vImport, vPing: vPing, vRepair: vRepair, vLog: vLog, vQuick: vQuick, vProcs: vProcs, vRuleAdd: vRuleAdd,
     vPick: function (a) { vPick(a); }, vView: function (a) { vView(a); }, vDel: function (a) { vDel(a); }, vDefault: function (a) { vDefault(a); }, vMode: function (a) { vMode(a); },
@@ -2194,6 +2311,7 @@
       if (comp('telegram').cur) {
         T.core.invoke('telegram_status').then(function (st) {
           applyTg(st);
+          refreshTgExtras();
           if (st.running) { S.on.telegram = true; renderAll(); }
           else if (st.enabled || (st.config && st.config.autostart)) realTelegram(true, true);
           else { renderAll(); checkTgForeign(); }

@@ -209,14 +209,26 @@
               <div class="stack">
                 <div class="panel">
                   <h3>Подключение</h3>
-                  <div class="row"><div class="lbl">Адрес прослушивания<small>Обычно 127.0.0.1, прокси доступен только на этом компьютере</small></div><input class="field mono" data-bind="tgc.host" aria-label="Адрес" style="width:150px"></div>
+                  <div class="row"><div class="lbl">Доступ из локальной сети<small id="tgLanDesc"></small></div><button class="sw" role="switch" id="tgLanSw" data-act="tgLan" aria-label="Доступ из локальной сети"></button></div>
+                  <div class="row"><div class="lbl">Адрес прослушивания<small>127.0.0.1: только этот компьютер. 0.0.0.0: вся локальная сеть</small></div><input class="field mono" data-bind="tgc.host" aria-label="Адрес" style="width:150px"></div>
                   <div class="row"><span class="lbl">Порт</span><input class="field mono" data-bind="tgc.port" inputmode="numeric" maxlength="5" aria-label="Порт" style="width:110px"></div>
                   <div class="row"><div class="lbl">Секрет<small>32 символа, часть ссылки для Telegram</small></div><div class="inl"><input class="field mono" data-bind="tgc.secret" maxlength="32" aria-label="Секрет" style="width:270px"><button class="btn sm" data-act="tgSecret">Новый</button></div></div>
                   <div class="field-row mt">
                     <input class="field mono" id="tgLink" readonly aria-label="Ссылка для Telegram">
                     <button class="btn" data-act="copyTg"><svg class="ic"><use href="#i-copy"/></svg>Копировать</button>
+                    <button class="btn" data-act="tgOpen">Открыть в Telegram</button>
                   </div>
                   <p class="note mt">Включите запрет, затем вставьте ссылку в любой чат Telegram (например, в «Избранное») и нажмите на неё: Telegram предложит добавить прокси. Это нужно сделать один раз. Ссылка обновляется после «Применить».</p>
+                </div>
+                <div class="panel" id="tgPhone">
+                  <div class="panel-head"><h3>Телефон в той же сети</h3></div>
+                  <p class="note" id="tgPhoneHint"></p>
+                  <div class="row"><div class="lbl">Порты в брандмауэре Windows<small id="tgFwDesc"></small></div><div class="inl"><span class="tag" id="tgFwTag"></span><button class="btn sm" id="tgFwBtn" data-act="tgFw"></button></div></div>
+                  <div class="row"><div class="lbl">QR-код для телефона<small>Откроет страницу со ссылкой и кнопкой «Копировать»</small></div><button class="btn sm" id="tgQrBtn" data-act="tgQr">Показать QR-код</button></div>
+                  <div class="qr-box" id="tgQrBox" hidden>
+                    <div class="qr-img" id="tgQrImg"></div>
+                    <div class="qr-info"><div class="mono" id="tgQrUrl"></div><p class="note" id="tgQrNote"></p></div>
+                  </div>
                 </div>
                 <div class="panel">
                   <h3>Дата-центры Telegram</h3>
@@ -235,6 +247,11 @@
               </div>
               <div class="stack">
                 <div class="panel">
+                  <div class="panel-head"><h3>Состояние</h3><div class="inl"><button class="btn sm" data-act="tgCheck" id="tgCheckBtn">Проверить</button><button class="btn sm" data-act="tgRestart">Перезапустить</button><button class="btn sm" data-act="tgLog">Лог</button></div></div>
+                  <div class="note" id="tgStats"></div>
+                  <div id="tgChecks"></div>
+                </div>
+                <div class="panel">
                   <h3>Дополнительно</h3>
                   <div class="row"><div class="lbl">Запускать вместе с Windows<small>Прокси стартует при запуске Бунта, а Бунт при входе в Windows</small></div><button class="sw" role="switch" data-sw="tgc.autostart" aria-label="Запускать вместе с Windows"></button></div>
                   <div class="row"><div class="lbl">Подробный лог<small>Режим отладки, лог растёт быстрее</small></div><button class="sw" role="switch" data-sw="tgc.verbose" aria-label="Подробный лог"></button></div>
@@ -244,6 +261,7 @@
                   <div class="row"><div class="lbl">Буфер сокета, КБ<small>От 4, по умолчанию 256</small></div><input class="field mono" data-bind="tgc.buf_kb" inputmode="numeric" aria-label="Буфер" style="width:100px"></div>
                   <div class="row"><div class="lbl">Пул соединений<small>На один DC, 0 отключает прямой WebSocket</small></div><input class="field mono" data-bind="tgc.pool_size" inputmode="numeric" aria-label="Пул" style="width:100px"></div>
                   <div class="row"><div class="lbl">Размер лога, МБ<small>После этого размера файл ротируется</small></div><input class="field mono" data-bind="tgc.log_max_mb" inputmode="numeric" aria-label="Размер лога" style="width:100px"></div>
+                  <div class="row"><div class="lbl">Старых логов<small>Сколько файлов хранить после ротации, от 1 до 20</small></div><input class="field mono" data-bind="tgc.log_backups" inputmode="numeric" aria-label="Старых логов" style="width:110px"></div>
                   <div class="row" style="justify-content:flex-end;gap:8px">
                     <button class="btn" data-act="tgReset">Сбросить</button>
                     <button class="btn primary" data-act="tgSave">Применить</button>
@@ -254,7 +272,6 @@
                   <h3>Компонент</h3>
                   <div class="row"><span class="lbl">Версия</span><span class="val" id="tVer">–</span></div>
                   <div class="row"><span class="lbl">Источник</span><span class="val">Flowseal/tg-ws-proxy</span></div>
-                  <div class="row"><span class="lbl">Режим</span><span class="val">Терминальный, без окна</span></div>
                   <div class="row"><span class="lbl">Лог</span><span class="val mono">modules\telegram\data\proxy.log</span></div>
                 </div>
               </div>

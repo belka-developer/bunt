@@ -440,3 +440,10 @@ body.app .view { height: 100vh; overflow-y: auto; }
 .diag-i b { font-weight: 500; }
 .diag-i small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
 .diag-i.ok b { color: var(--muted); font-weight: 400; }
+
+/* Вкладка Telegram: QR-код для телефона */
+.qr-box { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 10px; padding: 12px; background: var(--win); border: 1px solid var(--line-2); border-radius: 10px; }
+.qr-img { width: 176px; height: 176px; flex: none; background: #fff; border-radius: 8px; overflow: hidden; }
+.qr-img svg { width: 100%; height: 100%; display: block; }
+.qr-info { display: grid; gap: 6px; min-width: 0; flex: 1 1 180px; }
+.qr-info .mono { overflow-wrap: anywhere; font-size: 12.5px; }

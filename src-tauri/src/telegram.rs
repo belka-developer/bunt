@@ -71,6 +71,8 @@ pub struct Config {
     pub buf_kb: u32,
     pub pool_size: u32,
     pub log_max_mb: u32,
+    /// Сколько старых логов хранить (не меньше 1)
+    pub log_backups: u32,
     pub cfproxy: bool,
     pub h2: bool,
     pub cf_domain_on: bool,
@@ -95,6 +97,7 @@ impl Default for Config {
             buf_kb: 256,
             pool_size: 4,
             log_max_mb: 5,
+            log_backups: 1,
             cfproxy: true,
             h2: true,
             cf_domain_on: false,
@@ -164,6 +167,9 @@ pub(crate) fn validate(c: &Config) -> Result<(), String> {
     if c.log_max_mb < 1 || c.log_max_mb > 1024 {
         return Err("Размер лога: от 1 до 1024 МБ.".into());
     }
+    if c.log_backups < 1 || c.log_backups > 20 {
+        return Err("Число старых логов: от 1 до 20.".into());
+    }
     for (on, text, name) in [(c.cf_domain_on, &c.cf_domain, "Свой домен Cloudflare"), (c.cf_worker_on, &c.cf_worker, "Домен Cloudflare Worker")] {
         if on {
             let list = domains(text);
@@ -231,6 +237,7 @@ pub(crate) fn build_args(c: &Config, log_file: &Path) -> Vec<String> {
     push("--pool-size", Some(c.pool_size.to_string()));
     push("--log-file", Some(log_file.display().to_string()));
     push("--log-max-mb", Some(c.log_max_mb.to_string()));
+    push("--log-backups", Some(c.log_backups.to_string()));
     if !c.cfproxy {
         push("--no-cfproxy", None);
     }
@@ -508,6 +515,159 @@ fn restart_if_running() -> Result<(), String> {
     Ok(())
 }
 
+/// Открывает ссылку `tg://proxy` в Telegram Desktop: тот предложит добавить прокси.
+#[tauri::command]
+pub async fn telegram_open_link() -> Result<(), String> {
+    let url = link(&load_config());
+    #[cfg(windows)]
+    {
+        Command::new("explorer").arg(&url).creation_flags(CREATE_NO_WINDOW).spawn().map_err(|e| format!("Не удалось открыть Telegram: {e}"))?;
+    }
+    #[cfg(not(windows))]
+    let _ = url;
+    Ok(())
+}
+
+/// Перезапускает прокси с текущими настройками.
+#[tauri::command]
+pub async fn telegram_restart() -> Result<Info, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        stop();
+        std::thread::sleep(Duration::from_millis(800));
+        start_blocking()?;
+        set_enabled(true);
+        Ok(info())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Последние строки лога прокси.
+#[tauri::command]
+pub async fn telegram_log(lines: Option<usize>) -> Result<String, String> {
+    let path = data_dir()?.join("proxy.log");
+    let text = fs::read_to_string(&path).map_err(|_| "Лога пока нет. Он появится после первого запуска прокси.".to_string())?;
+    let n = lines.unwrap_or(200).clamp(10, 1000);
+    let all: Vec<&str> = text.lines().collect();
+    Ok(all[all.len().saturating_sub(n)..].join("\n"))
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Stats {
+    /// Время строки в логе
+    at: String,
+    total: u64,
+    active: u64,
+    ws: u64,
+    cf: u64,
+    tcp_fb: u64,
+    err: u64,
+    up: String,
+    down: String,
+}
+
+/// Разбирает строку лога вида `2026-10-16 05:50:00,123  INFO   stats: total=5 active=1 …`.
+fn parse_stats(line: &str) -> Option<Stats> {
+    let (head, body) = line.split_once("stats:")?;
+    let num = |k: &str| -> u64 {
+        body.split_whitespace().find_map(|p| p.strip_prefix(k)?.strip_prefix('=')?.parse::<u64>().ok()).unwrap_or(0)
+    };
+    // human_bytes даёт число и единицу через пробел: `up=1.5 MB`
+    let with_unit = |k: &str| -> String {
+        let words: Vec<&str> = body.split_whitespace().collect();
+        match words.iter().position(|p| p.starts_with(&format!("{k}="))) {
+            Some(i) => {
+                let mut v = words[i][k.len() + 1..].to_string();
+                if let Some(next) = words.get(i + 1) {
+                    if !next.contains('=') {
+                        v.push(' ');
+                        v.push_str(next);
+                    }
+                }
+                v
+            }
+            None => String::new(),
+        }
+    };
+    Some(Stats {
+        at: head.split(',').next().unwrap_or("").trim().to_string(),
+        total: num("total"),
+        active: num("active"),
+        ws: num("ws"),
+        cf: num("cf"),
+        tcp_fb: num("tcp_fb"),
+        err: num("err"),
+        up: with_unit("up"),
+        down: with_unit("down"),
+    })
+}
+
+/// Последняя строка статистики из лога: прокси пишет её раз в минуту.
+#[tauri::command]
+pub async fn telegram_stats() -> Option<Stats> {
+    let text = fs::read_to_string(data_dir().ok()?.join("proxy.log")).ok()?;
+    text.lines().rev().take(400).find_map(parse_stats)
+}
+
+#[derive(Serialize)]
+pub struct HostCheck {
+    host: String,
+    ok: bool,
+    ms: Option<u64>,
+}
+
+#[derive(Serialize)]
+pub struct Check {
+    running: bool,
+    /// Отвечает ли порт прокси на этом компьютере
+    listening: bool,
+    hosts: Vec<HostCheck>,
+}
+
+fn dc_numbers(c: &Config) -> Vec<u32> {
+    let mut v: Vec<u32> = dc_lines(&c.dc_ip).iter().filter_map(|l| l.split_once(':')?.0.parse::<u32>().ok()).filter(|d| (1..=5).contains(d)).collect();
+    if v.is_empty() {
+        v = vec![2, 4];
+    }
+    v.sort();
+    v.dedup();
+    v
+}
+
+fn tcp_ms(addr: std::net::SocketAddr) -> Option<u64> {
+    let t = std::time::Instant::now();
+    std::net::TcpStream::connect_timeout(&addr, Duration::from_secs(4)).ok()?;
+    Some(t.elapsed().as_millis() as u64)
+}
+
+/// Проверка прокси: запущен ли, отвечает ли его порт, достаются ли серверы Telegram, через которые он работает.
+#[tauri::command]
+pub async fn telegram_check() -> Result<Check, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        use std::net::ToSocketAddrs;
+        let c = load_config();
+        let local_host = match c.host.as_str() {
+            "0.0.0.0" | "::" | "" => "127.0.0.1".to_string(),
+            h => h.to_string(),
+        };
+        let listening = format!("{local_host}:{}", c.port).parse::<std::net::SocketAddr>().ok().and_then(tcp_ms).is_some();
+        let handles: Vec<_> = dc_numbers(&c)
+            .into_iter()
+            .map(|dc| {
+                std::thread::spawn(move || {
+                    let host = format!("kws{dc}.web.telegram.org");
+                    let ms = format!("{host}:443").to_socket_addrs().ok().and_then(|mut a| a.next()).and_then(tcp_ms);
+                    HostCheck { host, ok: ms.is_some(), ms }
+                })
+            })
+            .collect();
+        let hosts = handles.into_iter().filter_map(|h| h.join().ok()).collect();
+        Ok(Check { running: running(), listening, hosts })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Сохраняет настройки. Если прокси работает, перезапускает его с новыми.
 #[tauri::command]
 pub async fn telegram_config_set(config: Config) -> Result<Info, String> {
@@ -697,5 +857,31 @@ mod tests {
         assert!(link(&cfg()).ends_with("&secret=dd00112233445566778899aabbccddeeff"));
         let c = Config { fake_tls_domain: "a.io".into(), ..cfg() };
         assert!(link(&c).ends_with("&secret=ee00112233445566778899aabbccddeeff612e696f"));
+    }
+
+    #[test]
+    fn parses_stats_line() {
+        let line = "2026-10-16 05:50:00,123  INFO   stats: total=12 active=2 ws=9 h2=0 h2_tcp=0 h2_req=0 h2_err=0 tcp_fb=1 cf=2 front=0 bad=0 masked=0 err=3 pool=4/5 cf_pool=n/a up=1.5MB down=20.0MB";
+        let s = parse_stats(line).unwrap();
+        assert_eq!((s.total, s.active, s.ws, s.cf, s.tcp_fb, s.err), (12, 2, 9, 2, 1, 3));
+        assert_eq!(s.at, "2026-10-16 05:50:00");
+        assert_eq!(s.up, "1.5MB");
+        assert_eq!(s.down, "20.0MB");
+        assert!(parse_stats("2026 INFO something else").is_none());
+    }
+
+    #[test]
+    fn dc_numbers_from_config() {
+        assert_eq!(dc_numbers(&Config { dc_ip: "4:1.1.1.1\n2:1.1.1.1\n4:2.2.2.2\n9:3.3.3.3".into(), ..cfg() }), vec![2, 4]);
+        assert_eq!(dc_numbers(&Config { dc_ip: String::new(), ..cfg() }), vec![2, 4]);
+    }
+
+    #[test]
+    fn log_backups_validated_and_passed() {
+        assert!(validate(&Config { log_backups: 0, ..cfg() }).is_err());
+        assert!(validate(&Config { log_backups: 21, ..cfg() }).is_err());
+        let a = build_args(&Config { log_backups: 3, ..cfg() }, Path::new("x.log"));
+        let i = a.iter().position(|x| x == "--log-backups").unwrap();
+        assert_eq!(a[i + 1], "3");
     }
 }

@@ -13,6 +13,7 @@ mod dns;
 mod vless;
 mod vcredist;
 mod telegram;
+mod telegram_share;
 mod zapret;
 mod zapret_tools;
 
@@ -258,6 +259,15 @@ pub fn run() {
             telegram::telegram_status,
             telegram::telegram_start,
             telegram::telegram_stop,
+            telegram::telegram_restart,
+            telegram::telegram_open_link,
+            telegram::telegram_log,
+            telegram::telegram_stats,
+            telegram::telegram_check,
+            telegram_share::telegram_share_start,
+            telegram_share::telegram_share_stop,
+            telegram_share::telegram_firewall_status,
+            telegram_share::telegram_firewall_set,
             telegram::telegram_config_set,
             telegram::telegram_new_secret,
             telegram::telegram_config_reset,
