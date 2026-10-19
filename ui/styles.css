@@ -251,7 +251,17 @@ section[data-soon] > :not(.soon) { display: none !important; }
 .strat .sn .ic { width: 16px; height: 16px; color: var(--accent); }
 .strat .sf { font-family: var(--font-mono); font-size: 11px; color: var(--faint); overflow-wrap: anywhere; }
 .strat.cur { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent); }
-.strat.scan { border-color: var(--info); background: rgba(58, 168, 255, 0.08); box-shadow: 0 0 0 1px var(--info), 0 0 18px rgba(58, 168, 255, 0.28); }
+.strat.scan { border-color: var(--warn); background: rgba(242, 180, 65, 0.09); box-shadow: 0 0 0 1px var(--warn), 0 0 14px rgba(242, 180, 65, 0.3); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 1px var(--warn), 0 0 6px rgba(242, 180, 65, 0.15); } 50% { box-shadow: 0 0 0 1px var(--warn), 0 0 24px rgba(242, 180, 65, 0.6); } }
+@media (prefers-reduced-motion: reduce) { .strat.scan { animation: none; } }
+.srvs { margin-top: 8px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.srv .sn { overflow-wrap: break-word; }
+.srv .shd { min-height: 24px; }
+.srv .sn { min-width: 0; }
+.srv .sn > span.nm { min-width: 0; overflow-wrap: anywhere; }
+.flag { width: 22px; height: 16px; border-radius: 3px; flex: none; object-fit: cover; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14); }
+.flag.none { display: inline-flex; align-items: center; justify-content: center; background: var(--panel-2); color: var(--faint); box-shadow: 0 0 0 1px var(--line-2); }
+.srv .sn .flag.none .ic { width: 11px; height: 11px; color: var(--faint); }
 .strat.win { animation: win 1.2s ease-out; }
 @keyframes win { 0% { box-shadow: 0 0 0 1px var(--accent), 0 0 0 0 rgba(47, 227, 165, 0.7); } 100% { box-shadow: 0 0 0 1px var(--accent), 0 0 0 14px rgba(47, 227, 165, 0); } }
 .vhead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }

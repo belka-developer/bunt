@@ -92,7 +92,7 @@
 <p align="center"><img src="https://raw.githubusercontent.com/belka-developer/media-readme/main/bunt/screens/fptn.png" alt="Раздел FPTN" width="760"></p>
 
 1. Откройте **FPTN**, нажмите «Установить».
-2. Вставьте токен доступа (`fptn:…` или `fptnb:…`) и нажмите «Сохранить». Бунт покажет список серверов.
+2. Вставьте токен доступа (`fptn:…` или `fptnb:…`) и нажмите «Сохранить». Бунт покажет список серверов блоками с флагом страны и временем ответа (пинг). Пинг проверяется при запуске, при открытии раздела и по кнопке «Пинг», блок проверяемого сервера мигает оранжевым. Выберите один или несколько серверов нажатием на блок, а «Автовыбор» отдаёт выбор клиенту.
 3. Выберите сервер (или оставьте «Автовыбор») и включите переключатель.
 
 Токен это ваш пароль: никому его не показывайте и не выкладывайте. Если токен попал в чужие руки, перевыпустите его у поставщика.
@@ -140,7 +140,7 @@
 
 ## Благодарности
 
-Бунт только объединяет чужую работу в одном окне и ничего из неё не присваивает. Спасибо авторам: [Flowseal](https://github.com/Flowseal) (zapret-discord-youtube, tg-ws-proxy), [XTLS](https://github.com/XTLS/Xray-core) (Xray-core), [Amnezia](https://github.com/amnezia-vpn/amneziawg-windows-client) (клиент AmneziaWG), [fptn-project](https://github.com/fptn-project/fptn) (FPTN) и [WireGuard](https://www.wireguard.com) (wintun).
+Бунт только объединяет чужую работу в одном окне и ничего из неё не присваивает. Спасибо авторам: [Flowseal](https://github.com/Flowseal) (zapret-discord-youtube, tg-ws-proxy), [XTLS](https://github.com/XTLS/Xray-core) (Xray-core), [Amnezia](https://github.com/amnezia-vpn/amneziawg-windows-client) (клиент AmneziaWG), [fptn-project](https://github.com/fptn-project/fptn) (FPTN) [WireGuard](https://www.wireguard.com) (wintun) и [flag-icons](https://github.com/lipis/flag-icons) (флаги, лицензия MIT).
 
 ## Лицензия
 
@@ -182,6 +182,7 @@ src-tauri/src/   бэкенд на Rust
   telegram.rs    прокси для Telegram
   telegram_share.rs  QR-код, страница для телефона, правило брандмауэра
   fptn.rs        FPTN и защита сети
+  fptn_geo.rs    страна сервера по названию, для флага
   wg.rs          WireGuard и AmneziaWG
   vless.rs       VLESS на Xray-core
   dns.rs         смена DNS

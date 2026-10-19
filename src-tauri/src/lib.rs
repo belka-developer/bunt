@@ -8,6 +8,7 @@ mod integrity;
 mod modules;
 mod settings;
 mod fptn;
+mod fptn_geo;
 mod wg;
 mod dns;
 mod vless;
@@ -275,6 +276,7 @@ pub fn run() {
             telegram::telegram_foreign,
             telegram::telegram_take_over,
             fptn::fptn_status,
+            fptn::fptn_ping,
             fptn::fptn_connect,
             fptn::fptn_disconnect,
             fptn::fptn_repair,

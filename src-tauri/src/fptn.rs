@@ -14,11 +14,11 @@
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
-    net::Ipv4Addr,
+    net::{Ipv4Addr, TcpStream, ToSocketAddrs},
     path::PathBuf,
     process::{Child, Command, Stdio},
     sync::Mutex,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 #[cfg(windows)]
@@ -192,6 +192,10 @@ fn save_config(c: &Config) -> Result<(), String> {
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub(crate) struct ServerEntry {
     name: String,
+    /// Название для показа: без флагов-эмодзи, которые Windows рисует буквами
+    label: String,
+    /// Код страны для флага (файл в `ui/flags`), пусто если страна не узнана
+    code: String,
     host: String,
     port: u16,
 }
@@ -233,7 +237,11 @@ pub(crate) fn parse_token(token: &str) -> Result<Vec<ServerEntry>, String> {
         let host = sv.get("host").and_then(|x| x.as_str()).unwrap_or("").to_string();
         let port = sv.get("port").and_then(|x| x.as_u64()).unwrap_or(0) as u16;
         if !name.is_empty() {
-            out.push(ServerEntry { name, host, port });
+            let hint = ["country_code", "countryCode", "country", "code"]
+                .iter()
+                .find_map(|k| sv.get(*k).and_then(|x| x.as_str()))
+                .unwrap_or("");
+            out.push(ServerEntry { label: super::fptn_geo::label(&name), code: super::fptn_geo::code_for(&name, hint), name, host, port });
         }
     }
     if out.is_empty() {
@@ -757,6 +765,38 @@ fn info(with_adapter: bool) -> Info {
         config,
         adapter: if with_adapter && cfg!(windows) { adapter_now() } else { Adapter::default() },
     }
+}
+
+/// Время установки TCP-соединения с сервером в миллисекундах: лучший из двух замеров.
+/// `None`, если сервер не ответил за 2,5 секунды.
+fn tcp_ping(host: &str, port: u16) -> Option<u32> {
+    let addr = (host, port).to_socket_addrs().ok()?.next()?;
+    let mut best: Option<u32> = None;
+    for _ in 0..2 {
+        let t = Instant::now();
+        if TcpStream::connect_timeout(&addr, Duration::from_millis(2500)).is_ok() {
+            let ms = t.elapsed().as_millis().max(1) as u32;
+            best = Some(best.map_or(ms, |b| b.min(ms)));
+        } else if best.is_none() {
+            return None;
+        }
+    }
+    best
+}
+
+/// Пинг одного сервера из токена по имени. Адрес берётся из сохранённого токена, а не от окна.
+#[tauri::command]
+pub async fn fptn_ping(name: String) -> Result<Option<u32>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let servers = parse_token(&load_config().token)?;
+        let s = servers.iter().find(|s| s.name == name).ok_or("такого сервера нет в токене")?;
+        if s.host.is_empty() || s.port == 0 {
+            return Ok(None);
+        }
+        Ok(tcp_ping(&s.host, s.port))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

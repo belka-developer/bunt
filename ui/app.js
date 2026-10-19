@@ -49,7 +49,7 @@
     discord: { mode: 'auto', strategy: 'general (ALT2)', game: 'disabled', tcpPorts: '1024-65535', udpPorts: '1024-65535', custom: [], ipset: 'none', results: {}, free: null, scanHours: '0', scanLast: 0, autoupd: true, ipsetUpdated: 'ещё не обновляли' },
     telegram: { port: '1443', link: '' },
     fc: { token_in: '', bypass_method: 'sni-spoofing-yandex-26-4', strategy: 'rolling-tunnel', sni: 'google.com', mtu: '1420', preferred_server: '', tun_name: 'FPTN', tun_ip: '10.0.0.1', exclude_networks: '10.0.0.0/8,192.168.0.0/16', include_networks: '', split: false, split_mode: 'exclude', split_domains: '', adblock: true, blacklist: '', auto_gateway: true, remove_adapter: true, autostart: false },
-    fptn: { tokenSet: false, hint: '', servers: [], tokenError: '', adapter: { exists: false, status: '', description: '' }, dirty: false, busy: false, repairMsg: '', logOpen: false, log: '' },
+    fptn: { tokenSet: false, hint: '', servers: [], ping: {}, pinging: '', pingAt: 0, tokenError: '', adapter: { exists: false, status: '', description: '' }, dirty: false, busy: false, repairMsg: '', logOpen: false, log: '' },
     v: { profiles: [], config: { active: '', mode: 'tun', socks_port: 10808, http_port: 10809, default_action: 'proxy', bypass_lan: true, dns: ['1.1.1.1', '8.8.8.8'], rules: [], subs: [], autoconnect: false, keep_on_exit: false }, running: false, tun: false, dirty: false, adapter: false, busy: false, ping: {}, pinging: false, repairMsg: '', logOpen: false, log: '', view: '', viewName: '', rule: { kind: 'app', value: '', action: 'proxy' }, socks: '10808', http: '10809', dns_text: '1.1.1.1, 8.8.8.8', loaded: false },
     dn: { presets: [], adapters: [], active: '', has_snapshot: false, config: { last: '', custom: ['', ''], ipv6: true, doh: false }, vpn: false, doh_supported: false, busy: false, loaded: false, off: [], ping: {}, pinging: false, c1: '', c2: '', msg: '' },
     w: { profiles: [], config: { active: '', autoconnect: false, keep_on_exit: false, split_default: true }, running: false, tunnel: '', dirty: false, adapter: { exists: false, status: '', description: '' }, stats: { handshake_ago: null, rx: 0, tx: 0 }, busy: false, repairMsg: '', logOpen: false, log: '', paste: false, imp_name: 'wg0', imp_text: '', view: '', viewName: '' },
@@ -91,6 +91,10 @@
     ] },
     settings: { autostart: true, tray: true, notify: true, autoupdate: true }
   };
+  if (!inTauri) {   /* в обычном браузере показываем примерные серверы */
+    S.fptn.tokenSet = true; S.fptn.hint = 'fptnb…demo';
+    S.fptn.servers = [['Finland', 'fi'], ['Germany', 'de'], ['Netherlands', 'nl'], ['Sweden', 'se'], ['Kazakhstan', 'kz'], ['Server 6', '']].map(function (x, i) { return { name: x[0], label: x[0], code: x[1], host: '203.0.113.' + (10 + i), port: 443 }; });
+  }
 
   var get = function (p) { return p.split('.').reduce(function (o, k) { return o[k]; }, S); };
   var set = function (p, v) { var a = p.split('.'); var k = a.pop(); a.reduce(function (o, x) { return o[x]; }, S)[k] = v; };
@@ -243,7 +247,7 @@
     }).join('');
     $('#strats').innerHTML = STRAT_DEFS.map(function (s) {
       var r = d.results[s.f], cur = d.strategy === s.f;
-      var cls = (cur ? 'cur ' : '') + (scanning === s.f ? 'scan ' : '') + (flash === s.f ? 'win' : '');
+      var cls = (cur ? 'cur ' : '') + (scanning === s.f || (probing && cur && S.on.discord) ? 'scan ' : '') + (flash === s.f ? 'win' : '');
       return '<button class="strat ' + cls + '" data-strat="' + esc(s.f) + '" aria-pressed="' + cur + '">' +
         '<span class="shd"><span class="sg">' + s.g + '</span>' + stratTag(r) + '</span>' +
         '<span class="sn">' + (cur ? ico('check') : '') + esc(s.t) + '</span>' +
@@ -603,6 +607,7 @@
     if (PAGES.indexOf(page) < 0) page = 'home';
     S.page = page;
     if (page === 'dns') loadDn();
+    if (page === 'fptn' && S.fptn.servers.length) fAutoPing();
     if (page === 'discord') refreshDiscordExtras();
     if (page === 'telegram') refreshTgExtras(); else stopQr();
     $$('[data-page]').forEach(function (s) { s.hidden = s.dataset.page !== page; });
@@ -878,7 +883,7 @@
   function fSaveToken() {
     var t = (S.fc.token_in || '').trim();
     if (!t) { toast('Вставьте токен.', 'warn'); return; }
-    fSave(t).then(function () { if (S.fptn.tokenSet) { S.fc.token_in = ''; if (S.fptn.tokenError) toast('Токен сохранён, но не разобран: ' + S.fptn.tokenError, 'warn'); else toast('Токен сохранён, серверов: ' + S.fptn.servers.length); renderAll(); } });
+    fSave(t).then(function () { if (S.fptn.tokenSet) { S.fc.token_in = ''; if (S.fptn.tokenError) toast('Токен сохранён, но не разобран: ' + S.fptn.tokenError, 'warn'); else toast('Токен сохранён, серверов: ' + S.fptn.servers.length); S.fptn.ping = {}; S.fptn.pingAt = 0; renderAll(); fAutoPing(); } });
   }
   function fServer(name) {
     var cur = (S.fc.preferred_server || '').split(',').map(function (x) { return x.trim(); }).filter(Boolean);
@@ -985,6 +990,32 @@
       } else renderAll();
     }).catch(function () {});
   }
+  /* пинг серверов по одному: блок проверяемого сервера пульсирует оранжевым */
+  var fPingRun = false;
+  function fPingAll(quiet) {
+    var f = S.fptn;
+    if (fPingRun || !f.servers.length) return;
+    if (S.on.fptn || f.busy) { if (!quiet) toast('Пока FPTN включён, пинг шёл бы через туннель. Отключите FPTN и повторите.', 'warn'); return; }
+    var list = f.servers.slice(), i = 0;
+    fPingRun = true;
+    (function step() {
+      if (i >= list.length || S.on.fptn || f.busy) {
+        fPingRun = false; f.pinging = ''; f.pingAt = Date.now(); renderFptn();
+        if (!quiet) {
+          var ok = list.filter(function (s) { return typeof f.ping[s.name] === 'number'; }).sort(function (a, b) { return f.ping[a.name] - f.ping[b.name]; });
+          toast(ok.length ? 'Быстрее всех: ' + (ok[0].label || ok[0].name) + ', ' + f.ping[ok[0].name] + ' мс. Отвечают: ' + ok.length + ' из ' + list.length : 'Ни один сервер не ответил. Проверьте интернет.', ok.length ? undefined : 'warn');
+        }
+        return;
+      }
+      var s = list[i++];
+      f.pinging = s.name; renderFptn();
+      var run = inTauri ? T.core.invoke('fptn_ping', { name: s.name }) : new Promise(function (resolve) {
+        setTimeout(function () { var h = 0; for (var k = 0; k < s.name.length; k++) h = (h * 31 + s.name.charCodeAt(k)) >>> 0; resolve(h % 7 === 5 ? null : 18 + (h % 160)); }, 380);
+      });
+      run.then(function (ms) { return typeof ms === 'number' ? ms : null; }, function () { return null; }).then(function (ms) { f.ping[s.name] = ms; step(); });
+    })();
+  }
+  function fAutoPing() { if (Date.now() - S.fptn.pingAt > 120000) fPingAll(true); }
   function renderFptn() {
     var f = S.fptn, c = comp('fptn');
     var set = function (id, v) { var e = $(id); if (e) e.textContent = v; };
@@ -997,16 +1028,30 @@
     dis('#fAdOn', !a.exists || a.status === 'Up' || f.busy);
     dis('#fAdOff', !a.exists || a.status === 'Disabled' || f.busy);
     dis('#fAdDel', !a.exists || S.on.fptn || f.busy);
+    dis('#fPingBtn', fPingRun || !f.servers.length || f.busy);
+    set('#fPingBtn', fPingRun ? 'Проверяем…' : 'Пинг');
     var sl = $('#fServers');
     if (sl) {
       var picked = (S.fc.preferred_server || '').split(',').map(function (x) { return x.trim().toLowerCase(); }).filter(Boolean);
       if (!f.servers.length) {
         sl.innerHTML = '<span class="note">' + (f.tokenError ? 'Токен не удалось разобрать: ' + esc(f.tokenError) : 'Добавьте токен, и здесь появится список серверов.') + '</span>';
       } else {
-        sl.innerHTML = '<button class="btn sm' + (picked.length ? '' : ' primary') + '" data-act="fServer" data-arg="">Автовыбор</button>' + f.servers.map(function (s) {
-          var on = picked.indexOf(s.name.toLowerCase()) >= 0;
-          return '<button class="btn sm' + (on ? ' primary' : '') + '" data-act="fServer" data-arg="' + esc(s.name) + '" title="' + esc(s.host + ':' + s.port) + '">' + esc(s.name) + '</button>';
-        }).join('');
+        var best = null;
+        f.servers.forEach(function (s) { var v = f.ping[s.name]; if (typeof v === 'number' && (best === null || v < best)) best = v; });
+        sl.innerHTML = '<button class="strat srv' + (picked.length ? '' : ' cur') + '" data-act="fServer" data-arg="" aria-pressed="' + !picked.length + '">' +
+          '<span class="shd"><span class="sn"><span class="flag none">' + ico('globe') + '</span><span class="nm">Автовыбор</span>' + (picked.length ? '' : ico('check')) + '</span></span>' +
+          '<span class="sf">клиент берёт самый быстрый сервер</span></button>' +
+          f.servers.map(function (s) {
+            var on = picked.indexOf(s.name.toLowerCase()) >= 0, pv = f.ping[s.name], busy = f.pinging === s.name;
+            var tag = busy ? '<span class="tag warn">…</span>'
+              : pv === undefined ? '<span class="tag">–</span>'
+              : pv === null ? '<span class="tag bad">нет ответа</span>'
+              : '<span class="tag ' + (pv === best ? 'ok' : pv > 250 ? 'warn' : '') + '">' + pv + ' мс</span>';
+            var flag = s.code ? '<img class="flag" src="flags/' + esc(s.code) + '.svg" alt="" width="22" height="16">' : '<span class="flag none">' + ico('globe') + '</span>';
+            return '<button class="strat srv' + (on ? ' cur' : '') + (busy ? ' scan' : '') + '" data-act="fServer" data-arg="' + esc(s.name) + '" aria-pressed="' + on + '">' +
+              '<span class="shd"><span class="sn">' + flag + '<span class="nm">' + esc(s.label || s.name) + '</span>' + (on ? ico('check') : '') + '</span>' + tag + '</span>' +
+              '<span class="sf">' + esc(s.host + ':' + s.port) + '</span></button>';
+          }).join('');
       }
     }
     var d = $('#fDirty'); if (d) d.hidden = !f.dirty;
@@ -2074,7 +2119,7 @@
     testall: testall,
     testcancel: testcancel,
     probe: probe,
-    fSave: function () { fSave(); }, fSaveToken: fSaveToken, fServer: fServer, fClearToken: fClearToken, fReset: fReset, fRepair: fRepair, fLog: fLog,
+    fSave: function () { fSave(); }, fSaveToken: fSaveToken, fServer: fServer, fPing: function () { fPingAll(false); }, fClearToken: fClearToken, fReset: fReset, fRepair: fRepair, fLog: fLog,
     fAdapter: function (a) { fAdapter(a); }, fTakeOver: function (a) { fTakeOver(a); },
     tgSave: tgSave, tgReset: tgReset, tgSecret: tgSecret,
     tgLan: function () {
@@ -2283,6 +2328,7 @@
         T.core.invoke('fptn_status').then(function (st) {
           applyF(st);
           renderAll();
+          if (!st.running && !st.dirty && st.servers && st.servers.length) fAutoPing();
           if (st.dirty) adminReady.then(function () { if (S.admin !== false) watchFptn(); });
           else if (st.running) addLog({ svc: 'FPTN', m: 'FPTN уже работал. Бунт подхватил его.', ok: true });
           else if ((st.enabled || (st.config && st.config.autostart)) && st.token_set) adminReady.then(function () { realFptn(true, true); });
