@@ -23,6 +23,7 @@
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14"/></symbol>
     <symbol id="i-doc" viewBox="0 0 24 24"><path d="M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
@@ -301,16 +302,13 @@
             <div class="cols">
               <div class="stack">
                 <div class="panel">
-                  <div class="panel-head"><h3>Серверы</h3><button class="btn sm" data-act="vPing" id="vPingBtn"><svg class="ic"><use href="#i-refresh"/></svg>Проверить пинг</button></div>
-                  <div id="list-vless"></div>
+                  <div class="panel-head"><h3>Серверы</h3><button class="btn sm" data-act="vPing" id="vPingBtn" title="Проверить время ответа всех серверов"><svg class="ic"><use href="#i-refresh"/></svg>Пинг</button></div>
                   <div class="field-row"><input class="field mono" id="vlessIn" placeholder="vless://… или адрес подписки https://…" aria-label="Ссылка vless или подписка"><button class="btn primary" data-act="vImport"><svg class="ic"><use href="#i-plus"/></svg>Добавить</button></div>
-                  <p class="note mt" id="vlessMsg">Вставьте ссылку vless:// (можно несколько, по одной в строке) или адрес подписки.</p>
+                  <p class="note mt-s" id="vlessMsg">Вставьте ссылку vless:// (можно несколько, по одной в строке) или адрес подписки. Подписка покажет остаток трафика и срок, если сервис их сообщает.</p>
                   <pre class="logbox" id="vView" hidden></pre>
-                </div>
-                <div class="panel">
-                  <h3>Подписки</h3>
-                  <div id="vSubs"></div>
-                  <p class="note mt-s">Подписка обновляется кнопкой: Бунт заменит серверы из неё свежими. Серверы других протоколов (vmess, trojan и др.) пропускаются.</p>
+                  <div id="vGroups"></div>
+                  <div class="row"><div class="lbl">Обновлять подписки сами<small>Когда подходит срок (чаще всего раз в сутки). Если сервер из подписки включён, она обновится после отключения</small></div><button class="sw" role="switch" data-sw="v.config.sub_auto" aria-label="Обновлять подписки сами"></button></div>
+                  <p class="note mt-s">Серверы других протоколов (vmess, trojan и др.) из подписок пропускаются.</p>
                 </div>
                 <div class="panel">
                   <div class="panel-head"><h3>Правила</h3><button class="btn sm" data-act="vQuick">Российские сайты напрямую</button></div>

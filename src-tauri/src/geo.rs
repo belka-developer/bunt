@@ -1,4 +1,4 @@
-//! FPTN: страна сервера по его названию. Нужна для флага перед именем, как в мобильном клиенте.
+//! Страна сервера по его названию. Нужна для флага перед именем (FPTN и VLESS), как в мобильных клиентах.
 //!
 //! В токене у сервера есть только имя, адрес и порт, поэтому страна берётся из имени:
 //! «Finland», «Финляндия», «fi-2», «🇫🇮 Helsinki» и так далее. Никаких запросов в сеть,
@@ -142,6 +142,19 @@ pub(crate) fn code_for(name: &str, hint: &str) -> String {
             return first.to_string();
         }
     }
+    // двухбуквенный код ЗАГЛАВНЫМИ в любом месте: «VLESS RU 1», «Reality-DE-02», «[SE] Stockholm».
+    // Строчные не берём: «no», «in», «is» бывают просто словами.
+    for w in label(name).split(|c: char| !c.is_alphanumeric()) {
+        if w.len() == 2 && w.chars().all(|c| c.is_ascii_uppercase()) {
+            let lw = w.to_lowercase();
+            if lw == "uk" {
+                return "gb".to_string();
+            }
+            if code_known(&lw) {
+                return lw;
+            }
+        }
+    }
     String::new()
 }
 
@@ -160,6 +173,16 @@ mod tests {
         assert_eq!(code_for("fi_hel", ""), "fi");
         assert_eq!(code_for("Server", ""), "");
         assert_eq!(code_for("no way", ""), "no");
+    }
+
+    #[test]
+    fn by_uppercase_code() {
+        assert_eq!(code_for("VLESS RU 1", ""), "ru");
+        assert_eq!(code_for("Reality-DE-02", ""), "de");
+        assert_eq!(code_for("[SE] Stockholm", ""), "se");
+        assert_eq!(code_for("Premium UK", ""), "gb");
+        assert_eq!(code_for("Reality in the dark", ""), "");
+        assert_eq!(code_for("TURBO-01", ""), "");
     }
 
     #[test]

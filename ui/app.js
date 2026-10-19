@@ -50,7 +50,7 @@
     telegram: { port: '1443', link: '' },
     fc: { token_in: '', bypass_method: 'sni-spoofing-yandex-26-4', strategy: 'rolling-tunnel', sni: 'google.com', mtu: '1420', preferred_server: '', tun_name: 'FPTN', tun_ip: '10.0.0.1', exclude_networks: '10.0.0.0/8,192.168.0.0/16', include_networks: '', split: false, split_mode: 'exclude', split_domains: '', adblock: true, blacklist: '', auto_gateway: true, remove_adapter: true, autostart: false },
     fptn: { tokenSet: false, hint: '', servers: [], ping: {}, pinging: '', pingAt: 0, tokenError: '', adapter: { exists: false, status: '', description: '' }, dirty: false, busy: false, repairMsg: '', logOpen: false, log: '' },
-    v: { profiles: [], config: { active: '', mode: 'tun', socks_port: 10808, http_port: 10809, default_action: 'proxy', bypass_lan: true, dns: ['1.1.1.1', '8.8.8.8'], rules: [], subs: [], autoconnect: false, keep_on_exit: false }, running: false, tun: false, dirty: false, adapter: false, busy: false, ping: {}, pinging: false, repairMsg: '', logOpen: false, log: '', view: '', viewName: '', rule: { kind: 'app', value: '', action: 'proxy' }, socks: '10808', http: '10809', dns_text: '1.1.1.1, 8.8.8.8', loaded: false },
+    v: { profiles: [], config: { active: '', mode: 'tun', socks_port: 10808, http_port: 10809, default_action: 'proxy', bypass_lan: true, dns: ['1.1.1.1', '8.8.8.8'], rules: [], subs: [], sub_auto: true, autoconnect: false, keep_on_exit: false }, running: false, tun: false, dirty: false, adapter: false, busy: false, ping: {}, pinging: {}, pingAt: 0, open: {}, refreshing: '', repairMsg: '', logOpen: false, log: '', view: '', viewName: '', rule: { kind: 'app', value: '', action: 'proxy' }, socks: '10808', http: '10809', dns_text: '1.1.1.1, 8.8.8.8', loaded: false },
     dn: { presets: [], adapters: [], active: '', has_snapshot: false, config: { last: '', custom: ['', ''], ipv6: true, doh: false }, vpn: false, doh_supported: false, busy: false, loaded: false, off: [], ping: {}, pinging: false, c1: '', c2: '', msg: '' },
     w: { profiles: [], config: { active: '', autoconnect: false, keep_on_exit: false, split_default: true }, running: false, tunnel: '', dirty: false, adapter: { exists: false, status: '', description: '' }, stats: { handshake_ago: null, rx: 0, tx: 0 }, busy: false, repairMsg: '', logOpen: false, log: '', paste: false, imp_name: 'wg0', imp_text: '', view: '', viewName: '' },
     tgc: { autostart: false, host: '127.0.0.1', port: '1443', secret: '', dc_ip: '2:149.154.167.220\n4:149.154.167.220', verbose: false, buf_kb: '256', pool_size: '4', log_max_mb: '5', log_backups: '1', cfproxy: true, h2: true, cf_domain_on: false, cf_domain: '', cf_worker_on: false, cf_worker: '', force_test_dc: false, no_secure: false, fake_tls_domain: '' },
@@ -93,6 +93,17 @@
   };
   if (!inTauri) {   /* в обычном браузере показываем примерные серверы */
     S.fptn.tokenSet = true; S.fptn.hint = 'fptnb…demo';
+    S.v.profiles = [
+      ['Sweden', 'se', 's1', 'se1.example.net', 'reality'], ['Germany', 'de', 's1', 'de2.example.net', 'reality'], ['Netherlands', 'nl', 's1', 'nl1.example.net', 'tls'],
+      ['Finland', 'fi', 's1', 'fi3.example.net', 'reality'], ['Russia', 'ru', 's2', 'ru1.example.org', 'reality'], ['Kazakhstan', 'kz', 's2', 'kz1.example.org', 'reality'],
+      ['Home VPS', '', '', '203.0.113.7', 'reality'], ['USA', 'us', '', '198.51.100.20', 'tls']
+    ].map(function (x, i) { return { id: 'p' + i, name: x[0], label: x[0], code: x[1], sub: x[2], address: x[3], port: 443, network: 'tcp', security: x[4], flow: '', ok: true, error: '' }; });
+    S.v.config.active = 'p1';
+    var nowS = Math.floor(Date.now() / 1000), GB = 1073741824;
+    S.v.config.subs = [
+      { id: 's1', name: 'Быстрый VPN', url: 'https://sub.example.net/abc', updated: nowS - 5400, count: 4, upload: 6 * GB, download: 71 * GB, total: 100 * GB, expire: nowS + 24 * 86400, has_usage: true, web: 'https://example.net/cabinet', support: 'https://t.me/example', announce: '', interval: 24 },
+      { id: 's2', name: 'Резервная подписка', url: 'https://sub.example.org/xyz', updated: nowS - 86400, count: 2, upload: 2 * GB, download: 19 * GB, total: 0, expire: 0, has_usage: true, web: '', support: '', announce: 'Безлимит до конца месяца', interval: 0 }
+    ];
     S.fptn.servers = [['Finland', 'fi'], ['Germany', 'de'], ['Netherlands', 'nl'], ['Sweden', 'se'], ['Kazakhstan', 'kz'], ['Server 6', '']].map(function (x, i) { return { name: x[0], label: x[0], code: x[1], host: '203.0.113.' + (10 + i), port: 443 }; });
   }
 
@@ -608,6 +619,7 @@
     S.page = page;
     if (page === 'dns') loadDn();
     if (page === 'fptn' && S.fptn.servers.length) fAutoPing();
+    if (page === 'vless' && S.v.profiles.length) vAutoPing();
     if (page === 'discord') refreshDiscordExtras();
     if (page === 'telegram') refreshTgExtras(); else stopQr();
     $$('[data-page]').forEach(function (s) { s.hidden = s.dataset.page !== page; });
@@ -990,6 +1002,9 @@
       } else renderAll();
     }).catch(function () {});
   }
+  function flagHtml(code) {
+    return code ? '<img class="flag" src="flags/' + esc(code) + '.svg" alt="" width="22" height="16">' : '<span class="flag none">' + ico('globe') + '</span>';
+  }
   /* пинг серверов по одному: блок проверяемого сервера пульсирует оранжевым */
   var fPingRun = false;
   function fPingAll(quiet) {
@@ -1047,7 +1062,7 @@
               : pv === undefined ? '<span class="tag">–</span>'
               : pv === null ? '<span class="tag bad">нет ответа</span>'
               : '<span class="tag ' + (pv === best ? 'ok' : pv > 250 ? 'warn' : '') + '">' + pv + ' мс</span>';
-            var flag = s.code ? '<img class="flag" src="flags/' + esc(s.code) + '.svg" alt="" width="22" height="16">' : '<span class="flag none">' + ico('globe') + '</span>';
+            var flag = flagHtml(s.code);
             return '<button class="strat srv' + (on ? ' cur' : '') + (busy ? ' scan' : '') + '" data-act="fServer" data-arg="' + esc(s.name) + '" aria-pressed="' + on + '">' +
               '<span class="shd"><span class="sn">' + flag + '<span class="nm">' + esc(s.label || s.name) + '</span>' + (on ? ico('check') : '') + '</span>' + tag + '</span>' +
               '<span class="sf">' + esc(s.host + ':' + s.port) + '</span></button>';
@@ -1407,8 +1422,7 @@
     var one = /^https?:\/\/\S+$/i.test(t);
     var p;
     if (one) {
-      var host = ''; try { host = new URL(t).hostname; } catch (e) { host = ''; }
-      p = T.core.invoke('vless_sub_add', { name: host || 'Подписка', url: t });
+      p = T.core.invoke('vless_sub_add', { name: '', url: t });
     } else p = T.core.invoke('vless_import', { text: t });
     S.v.busy = true; renderAll();
     p.then(function (d) { el.value = ''; vDone(d); }).catch(function (err) { vSetMsg(String(err)); vErr(err); }).then(function () { S.v.busy = false; renderAll(); });
@@ -1428,16 +1442,138 @@
     if (v.view && v.viewName === id) { v.view = ''; renderAll(); return; }
     T.core.invoke('vless_profile_view', { id: id }).then(function (t) { v.view = t; v.viewName = id; renderAll(); }).catch(vErr);
   }
-  function vPing() {
+  /* пинг серверов: по четыре сразу, блоки проверяемых серверов пульсируют оранжевым */
+  var vPingRun = false;
+  function vPingAll(quiet) {
     var v = S.v;
-    if (!inTauri || v.pinging) return;
-    v.pinging = true; renderAll();
-    T.core.invoke('vless_ping').then(function (r) { v.ping = {}; r.forEach(function (x) { v.ping[x.id] = x.ms; }); }).catch(vErr).then(function () { v.pinging = false; renderAll(); });
+    if (vPingRun) return;
+    var queue = v.profiles.filter(function (p) { return p.ok; }).map(function (p) { return p.id; });
+    if (!queue.length) return;
+    if (v.running) { if (!quiet) toast('Пока VLESS включён, пинг шёл бы через туннель. Отключите VLESS и повторите.', 'warn'); return; }
+    var total = queue.length, active = 0, ended = false;
+    vPingRun = true; v.ping = {}; renderVless();
+    function finish() {
+      if (ended) return; ended = true;
+      vPingRun = false; v.pinging = {}; v.pingAt = Date.now(); renderVless();
+      if (quiet) return;
+      var ok = v.profiles.filter(function (p) { return typeof v.ping[p.id] === 'number'; }).sort(function (a, b) { return v.ping[a.id] - v.ping[b.id]; });
+      toast(ok.length ? 'Быстрее всех: ' + (ok[0].label || ok[0].name) + ', ' + v.ping[ok[0].id] + ' мс. Отвечают: ' + ok.length + ' из ' + total : 'Ни один сервер не ответил. Проверьте интернет.', ok.length ? undefined : 'warn');
+    }
+    function pump() {
+      while (active < 4 && queue.length && !v.running) {
+        (function (id) {
+          active++; v.pinging[id] = true;
+          var run = inTauri ? T.core.invoke('vless_ping_one', { id: id }) : new Promise(function (resolve) {
+            setTimeout(function () { var h = 0; for (var k = 0; k < id.length; k++) h = (h * 31 + id.charCodeAt(k)) >>> 0; resolve(h % 9 === 4 ? null : 20 + (h % 180)); }, 300 + (id.charCodeAt(0) % 5) * 90);
+          });
+          run.then(function (ms) { return typeof ms === 'number' ? ms : null; }, function () { return null; }).then(function (ms) {
+            v.ping[id] = ms; delete v.pinging[id]; active--;
+            renderVless(); pump();
+          });
+        })(queue.shift());
+      }
+      if (!active) finish();
+    }
+    pump();
+  }
+  function vAutoPing() { if (Date.now() - S.v.pingAt > 120000) vPingAll(true); }
+  /* подписки обновляются сами, когда подходит срок */
+  function vAutoSubs() {
+    var v = S.v;
+    if (!inTauri || !installed('vless') || !v.config.sub_auto || v.busy) return;
+    var now = Math.floor(Date.now() / 1000);
+    var due = v.config.subs.filter(function (s) {
+      var live = v.running && v.profiles.some(function (p) { return p.sub === s.id && p.id === v.config.active; });
+      return !live && now - s.updated > Math.max(1, s.interval || 24) * 3600;
+    })[0];
+    if (!due) return;
+    v.busy = true; v.refreshing = due.id; renderAll();
+    T.core.invoke('vless_sub_refresh', { id: due.id }).then(function (d) {
+      applyV(d.info); addLog({ svc: SVC.vless.name, m: 'Подписка «' + due.name + '» обновлена сама. ' + d.message });
+    }).catch(function (err) {
+      var cur = S.v.config.subs.filter(function (s) { return s.id === due.id; })[0];
+      if (cur) cur.updated = now - Math.max(1, cur.interval || 24) * 3600 + 3600;   /* не долбим снова в течение часа */
+      addLog({ svc: SVC.vless.name, m: 'Подписку «' + due.name + '» обновить не удалось: ' + err });
+    }).then(function () { S.v.busy = false; S.v.refreshing = ''; renderAll(); setTimeout(vAutoSubs, 800); });
+  }
+  function vToggle(id) { var v = S.v; v.open[id] = !vGroupOpen(id); renderVless(); }
+  function vGroupOpen(id) {
+    var v = S.v;
+    if (id in v.open) return v.open[id];
+    return v.config.subs.length < 2 || v.profiles.some(function (p) { return p.sub === id && p.id === v.config.active; });
+  }
+  function vSubOpen(arg) {
+    var p = String(arg).split(':');
+    if (!inTauri) return;
+    T.core.invoke('vless_sub_open', { id: p[0], what: p[1] }).catch(vErr);
+  }
+  function fmtTraffic(n) {
+    var u = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ', 'ПБ'], i = 0, x = Number(n) || 0;
+    while (x >= 1024 && i < u.length - 1) { x /= 1024; i++; }
+    return (i === 0 ? String(Math.round(x)) : (x >= 100 ? x.toFixed(0) : x.toFixed(1)).replace(/\.0$/, '').replace('.', ',')) + '\u00a0' + u[i];
+  }
+  function daysWord(n) { var m = n % 100, d = n % 10; return (m > 10 && m < 15) ? 'дней' : d === 1 ? 'день' : (d > 1 && d < 5) ? 'дня' : 'дней'; }
+  function usageHtml(s) {
+    if (!s.has_usage) return '<div class="sg-meta">Сервис не сообщает остаток трафика.</div>';
+    var used = (s.upload || 0) + (s.download || 0), out = '<div class="usage" title="Получено: ' + fmtTraffic(s.download) + ', отправлено: ' + fmtTraffic(s.upload) + '">';
+    if (s.total > 0) {
+      var pct = Math.min(100, used / s.total * 100), left = Math.max(0, s.total - used);
+      out += '<div class="ubar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(pct) + '"><span class="ufill ' + (pct >= 90 ? 'bad' : pct >= 70 ? 'warn' : '') + '" style="width:' + pct.toFixed(1) + '%"></span></div>' +
+        '<div class="uline"><span>Использовано <b>' + fmtTraffic(used) + '</b> из <b>' + fmtTraffic(s.total) + '</b></span><span>Осталось <b>' + fmtTraffic(left) + '</b> · ' + (pct < 1 && used > 0 ? '<1' : Math.round(pct)) + '%</span></div>';
+    } else {
+      out += '<div class="uline"><span>Использовано <b>' + fmtTraffic(used) + '</b></span><span>Без лимита трафика</span></div>';
+    }
+    if (s.expire > 0) {
+      var days = Math.ceil((s.expire * 1000 - Date.now()) / 86400000), dt = new Date(s.expire * 1000).toLocaleDateString('ru-RU');
+      out += '<div class="uline"><span>' + (days < 0 ? 'Срок истёк ' : 'Действует до ') + '<b>' + esc(dt) + '</b></span>' +
+        (days < 0 ? '<span class="tag bad">истекла</span>' : '<span class="' + (days <= 3 ? 'tag warn' : '') + '">осталось ' + days + ' ' + daysWord(days) + '</span>') + '</div>';
+    }
+    return out + '</div>';
+  }
+  function vCard(p, sub) {
+    var v = S.v, cfg = v.config;
+    var sel = cfg.active === p.id, live = v.running && sel, ms = v.ping[p.id], busy = !!v.pinging[p.id], best = vBest();
+    var info = p.ok ? p.address + ':' + p.port + ' · ' + p.network + (p.security !== 'none' ? ' · ' + p.security : '') : (p.error || 'Ссылка повреждена');
+    var tag = live ? '<span class="tag ok">включён</span>' : busy ? '<span class="tag warn">…</span>'
+      : !(p.id in v.ping) ? '' : ms == null ? '<span class="tag bad">нет ответа</span>'
+      : '<span class="tag ' + (ms === best ? 'ok' : ms > 250 ? 'warn' : '') + '">' + ms + ' мс</span>';
+    return '<div class="strat srv vcard' + (sel ? ' cur' : '') + (busy ? ' scan' : '') + (p.ok ? '' : ' bad-link') + '" role="button" tabindex="0" data-act="vPick" data-arg="' + esc(p.id) + '" aria-pressed="' + sel + '">' +
+      '<span class="shd"><span class="sn">' + flagHtml(p.code) + '<span class="nm">' + esc(p.label || p.name) + '</span>' + (sel ? ico('check') : '') + '</span>' + tag + '</span>' +
+      '<span class="sf"><span class="ad">' + esc(info) + '</span><span class="vtools">' +
+      '<button class="btn xs" data-act="vView" data-arg="' + esc(p.id) + '"' + (p.ok ? '' : ' disabled') + ' title="Показать описание сервера, ключи скрыты">Описание</button>' +
+      (sub ? '' : '<button class="btn xs" data-act="vDel" data-arg="' + esc(p.id) + '" aria-label="Удалить ' + esc(p.name) + '" title="Удалить"' + (live ? ' disabled' : '') + '>' + ico('x') + '</button>') +
+      '</span></span></div>';
+  }
+  function vBest() {
+    var b = null;
+    S.v.profiles.forEach(function (p) { var m = S.v.ping[p.id]; if (typeof m === 'number' && (b === null || m < b)) b = m; });
+    return b;
+  }
+  function vGroups() {
+    var v = S.v, cfg = v.config, out = '';
+    var fmt = function (t) { return t ? new Date(t * 1000).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '–'; };
+    cfg.subs.forEach(function (s) {
+      var list = v.profiles.filter(function (p) { return p.sub === s.id; }), open = vGroupOpen(s.id), re = v.refreshing === s.id;
+      out += '<section class="sgrp"><div class="sg-head"><button class="sg-toggle" data-act="vToggle" data-arg="' + esc(s.id) + '" aria-expanded="' + open + '">' + ico('chev') + '<span class="nm">' + esc(s.name) + '</span><span class="tag">' + list.length + '</span></button><span class="sg-tools">' +
+        (s.web ? '<button class="btn sm" data-act="vSubOpen" data-arg="' + esc(s.id) + ':web">Страница</button>' : '') +
+        (s.support ? '<button class="btn sm" data-act="vSubOpen" data-arg="' + esc(s.id) + ':support">Поддержка</button>' : '') +
+        '<button class="btn sm" data-act="vSubRefresh" data-arg="' + esc(s.id) + '"' + (v.busy ? ' disabled' : '') + '>' + (re ? 'Обновляем…' : 'Обновить') + '</button>' +
+        '<button class="btn sm ghost" data-act="vSubRemove" data-arg="' + esc(s.id) + '" aria-label="Удалить подписку ' + esc(s.name) + '" title="Удалить подписку">' + ico('x') + '</button></span></div>' +
+        '<div class="sg-meta">Обновлена ' + esc(fmt(s.updated)) + (s.interval ? ' · сервис просит обновлять раз в ' + s.interval + ' ч' : '') + '</div>' +
+        usageHtml(s) + (s.announce ? '<div class="sg-note">' + esc(s.announce) + '</div>' : '') +
+        (open ? (list.length ? '<div class="strats srvs">' + list.map(function (p) { return vCard(p, true); }).join('') + '</div>' : '<div class="sg-note">В подписке нет серверов.</div>') : '') + '</section>';
+    });
+    var own = v.profiles.filter(function (p) { return !p.sub; });
+    if (own.length || !cfg.subs.length) {
+      out += '<section class="sgrp plain"><div class="sg-head"><span class="sg-toggle" style="cursor:default">' + ico('net').replace('class="ic"', 'class="ic" style="transform:none"') + '<span class="nm">Обычные серверы</span><span class="tag">' + own.length + '</span></span></div>' +
+        (own.length ? '<div class="strats srvs">' + own.map(function (p) { return vCard(p, false); }).join('') + '</div>' : '<div class="empty"><span>Серверов пока нет. Вставьте ссылку vless:// или адрес подписки выше.</span></div>') + '</section>';
+    }
+    return out;
   }
   function vSubRefresh(id) {
     if (!inTauri || S.v.busy) return;
-    S.v.busy = true; renderAll();
-    T.core.invoke('vless_sub_refresh', { id: id }).then(vDone).catch(vErr).then(function () { S.v.busy = false; renderAll(); });
+    S.v.busy = true; S.v.refreshing = id; renderAll();
+    T.core.invoke('vless_sub_refresh', { id: id }).then(vDone).catch(vErr).then(function () { S.v.busy = false; S.v.refreshing = ''; renderAll(); });
   }
   function vSubRemove(id) {
     if (!inTauri || S.v.busy) return;
@@ -1538,27 +1674,8 @@
     var v = S.v, c = comp('vless'), cfg = v.config;
     var set = function (id, t) { var e = $(id); if (e) e.textContent = t; };
     set('#vVer', c.cur || '–');
-    var host = $('#list-vless');
-    if (host) {
-      if (!v.profiles.length) host.innerHTML = '<div class="empty"><span>Серверов пока нет. Вставьте ссылку vless:// или адрес подписки ниже.</span></div>';
-      else host.innerHTML = v.profiles.map(function (p) {
-        var sel = cfg.active === p.id, live = v.running && sel, ms = v.ping[p.id];
-        var sub = p.ok ? p.address + ':' + p.port + ' · ' + p.network + (p.security !== 'none' ? ' · ' + p.security : '') : (p.error || 'Ссылка повреждена');
-        var pg = !(p.id in v.ping) ? '' : ms == null ? '<span class="tag bad">нет ответа</span>' : '<span class="tag ' + (ms < 150 ? 'ok' : 'warn') + '">' + ms + ' мс</span>';
-        return '<div class="prof ' + (sel ? 'sel' : '') + '"><button class="pick" data-act="vPick" data-arg="' + esc(p.id) + '" aria-pressed="' + sel + '"><span class="radio"></span><span class="pn"><b>' + esc(p.name) + '</b><small>' + esc(sub) + '</small></span></button>' +
-          (live ? '<span class="tag ok">включён</span>' : pg) +
-          '<button class="btn sm ghost" data-act="vView" data-arg="' + esc(p.id) + '"' + (p.ok ? '' : ' disabled') + '>Описание</button>' +
-          '<button class="btn sm ghost" data-act="vDel" data-arg="' + esc(p.id) + '" aria-label="Удалить ' + esc(p.name) + '"' + (live ? ' disabled' : '') + '>' + ico('x') + '</button></div>';
-      }).join('');
-    }
+    var gr = $('#vGroups'); if (gr) gr.innerHTML = vGroups();
     var vw = $('#vView'); if (vw) { vw.hidden = !v.view; vw.textContent = v.view || ''; }
-    var sb = $('#vSubs');
-    if (sb) sb.innerHTML = !cfg.subs.length ? '<div class="empty"><span>Подписок нет. Вставьте адрес подписки в поле выше.</span></div>' : cfg.subs.map(function (s) {
-      var d = s.updated ? new Date(s.updated * 1000).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '–';
-      return '<div class="prof"><span class="pn" style="flex:1;min-width:0"><b>' + esc(s.name) + '</b><small>Серверов: ' + s.count + ' · обновлена ' + esc(d) + '</small></span>' +
-        '<button class="btn sm" data-act="vSubRefresh" data-arg="' + esc(s.id) + '"' + (v.busy ? ' disabled' : '') + '>Обновить</button>' +
-        '<button class="btn sm ghost" data-act="vSubRemove" data-arg="' + esc(s.id) + '" aria-label="Удалить подписку ' + esc(s.name) + '">' + ico('x') + '</button></div>';
-    }).join('');
     var rl = $('#vRules');
     if (rl) rl.innerHTML = !cfg.rules.length ? '<div class="empty"><span>Правил нет: весь трафик идёт по варианту «по умолчанию».</span></div>' : cfg.rules.map(function (r, i) {
       var cls = r.action === 'proxy' ? 'ok' : r.action === 'block' ? 'bad' : '';
@@ -1583,7 +1700,7 @@
     var d = $('#vDirty'); if (d) d.hidden = !v.dirty;
     var rm = $('#vRepairMsg'); if (rm) { rm.hidden = !v.repairMsg; rm.textContent = v.repairMsg; }
     var lg = $('#vLog'); if (lg) { lg.hidden = !v.logOpen; lg.textContent = v.log || ''; }
-    var pb = $('#vPingBtn'); if (pb) pb.disabled = v.pinging || !v.profiles.length;
+    var pb = $('#vPingBtn'); if (pb) { pb.disabled = vPingRun || !v.profiles.length; pb.lastChild.textContent = vPingRun ? 'Проверяем…' : 'Пинг'; }
     var sw = document.querySelector('.head-sw [data-svc="vless"]'); if (sw) sw.disabled = v.busy;
     var stt = document.querySelector('[data-state="vless"]');
     if (stt && v.busy) { stt.className = 'state'; stt.innerHTML = '<span class="spin"></span>Подождите…'; }
@@ -2179,7 +2296,7 @@
       }).catch(function (e) { toast(String(e).slice(0, 200), 'warn'); });
     },
     copyTg: function () { copyText($('#tgLink').value, 'Ссылка скопирована'); },
-    vImport: vImport, vPing: vPing, vRepair: vRepair, vLog: vLog, vQuick: vQuick, vProcs: vProcs, vRuleAdd: vRuleAdd,
+    vImport: vImport, vPing: function () { vPingAll(false); }, vToggle: vToggle, vSubOpen: vSubOpen, vRepair: vRepair, vLog: vLog, vQuick: vQuick, vProcs: vProcs, vRuleAdd: vRuleAdd,
     vPick: function (a) { vPick(a); }, vView: function (a) { vView(a); }, vDel: function (a) { vDel(a); }, vDefault: function (a) { vDefault(a); }, vMode: function (a) { vMode(a); },
     vRuleAct: function (a) { vRuleAct(a); }, vRuleDel: function (a) { vRuleDel(a); }, vPickProc: function (a) { vPickProc(a); },
     vSubAdd: vSubAdd, vSubRefresh: function (a) { vSubRefresh(a); }, vSubRemove: function (a) { vSubRemove(a); },
@@ -2225,6 +2342,7 @@
       if (d.sw === 'tgc.autostart') { tgAutostart(S.tgc.autostart); renderAll(); return; }
       if (d.sw.indexOf('w.config.') === 0) { wSaveConfig(); renderAll(); return; }
       if (d.sw.indexOf('dn.') === 0) { renderAll(); return; }
+      if (d.sw === 'v.config.sub_auto') { vSave(); if (S.v.config.sub_auto) vAutoSubs(); return; }
       if (d.sw.indexOf('v.config.') === 0) { vApplyNote(); vSave(); return; }
       if (d.sw === 'discord.autoupd') toast(S.discord.autoupd ? 'Автопроверка включена' : 'Автопроверка выключена');
       renderDiscord();
@@ -2242,6 +2360,10 @@
       return;
     }
     if (d.act && ACT[d.act]) ACT[d.act](d.arg);
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('.srv[role="button"]')) { e.preventDefault(); e.target.click(); }
   });
 
   document.addEventListener('change', function (e) {
@@ -2345,7 +2467,10 @@
           if (st.dirty) adminReady.then(function () { watchVless(); });
           else if (st.running) addLog({ svc: SVC.vless.name, m: 'VLESS уже работал. Бунт подхватил его.', ok: true });
           else if (st.config && st.config.autoconnect && st.config.active) adminReady.then(function () { realVless(true, true); });
+          if (!st.running && !st.dirty && st.profiles && st.profiles.length) vAutoPing();
+          setTimeout(vAutoSubs, 4000);
         }).catch(function () {});
+        setInterval(vAutoSubs, 30 * 60 * 1000);
         var vTick = 0;
         setInterval(function () { vTick++; if (S.page === 'vless' || S.on.vless || vTick % 3 === 0) watchVless(); }, 5000);
       }

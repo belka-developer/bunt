@@ -114,7 +114,7 @@ impl Default for Rule {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 #[serde(default)]
 pub struct Sub {
     pub id: String,
@@ -123,12 +123,20 @@ pub struct Sub {
     /// Когда обновлялась (unix-секунды)
     pub updated: u64,
     pub count: usize,
-}
-
-impl Default for Sub {
-    fn default() -> Self {
-        Sub { id: String::new(), name: String::new(), url: String::new(), updated: 0, count: 0 }
-    }
+    /// Трафик из заголовка `subscription-userinfo` (байты). `total` = 0: лимита нет или он неизвестен
+    pub upload: u64,
+    pub download: u64,
+    pub total: u64,
+    /// Когда подписка заканчивается (unix-секунды), 0: бессрочная или неизвестно
+    pub expire: u64,
+    /// Была ли в ответе строка с трафиком вообще
+    pub has_usage: bool,
+    /// Страница подписки и поддержка из заголовков
+    pub web: String,
+    pub support: String,
+    pub announce: String,
+    /// Как часто сервис просит обновлять подписку (часы), 0: не указано
+    pub interval: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -148,6 +156,8 @@ pub struct Config {
     pub dns: Vec<String>,
     pub rules: Vec<Rule>,
     pub subs: Vec<Sub>,
+    /// Сам обновлять подписки, когда подходит срок (если VLESS с их сервером не включён)
+    pub sub_auto: bool,
     pub autoconnect: bool,
     pub keep_on_exit: bool,
 }
@@ -164,6 +174,7 @@ impl Default for Config {
             dns: vec!["1.1.1.1".into(), "8.8.8.8".into()],
             rules: Vec::new(),
             subs: Vec::new(),
+            sub_auto: true,
             autoconnect: false,
             keep_on_exit: false,
         }
@@ -271,6 +282,7 @@ pub(crate) fn sanitize_config(inc: &Config, stored: &Config) -> Result<Config, S
     Ok(Config {
         active: stored.active.clone(),
         subs: stored.subs.clone(),
+        sub_auto: inc.sub_auto,
         mode: mode.into(),
         socks_port: inc.socks_port,
         http_port: inc.http_port,
@@ -435,6 +447,10 @@ struct Stored {
 pub struct Profile {
     id: String,
     name: String,
+    /// Название без флагов-эмодзи (Windows рисует их буквами)
+    label: String,
+    /// Код страны для флага (файл в `ui/flags`), пусто если страна не узнана
+    code: String,
     sub: String,
     address: String,
     port: u16,
@@ -466,6 +482,8 @@ fn view(s: &Stored) -> Profile {
         Ok(n) => Profile {
             id: s.id.clone(),
             name: s.name.clone(),
+            label: super::geo::label(&s.name),
+            code: super::geo::code_for(&s.name, ""),
             sub: s.sub.clone(),
             address: n.address,
             port: n.port,
@@ -475,7 +493,7 @@ fn view(s: &Stored) -> Profile {
             ok: true,
             error: String::new(),
         },
-        Err(e) => Profile { id: s.id.clone(), name: s.name.clone(), sub: s.sub.clone(), error: e, ..Profile::default() },
+        Err(e) => Profile { id: s.id.clone(), name: s.name.clone(), label: super::geo::label(&s.name), code: super::geo::code_for(&s.name, ""), sub: s.sub.clone(), error: e, ..Profile::default() },
     }
 }
 
@@ -1011,30 +1029,6 @@ pub fn shutdown() {
 
 // ───────── пинг и список процессов ─────────
 
-#[derive(Serialize)]
-pub struct Ping {
-    id: String,
-    ms: Option<u32>,
-}
-
-fn ping_blocking() -> Vec<Ping> {
-    let handles: Vec<_> = read_profiles()
-        .into_iter()
-        .map(|s| {
-            std::thread::spawn(move || {
-                let ms = parse_link(&s.link).ok().and_then(|n| {
-                    let addr = (n.address.as_str(), n.port).to_socket_addrs().ok()?.next()?;
-                    let t = Instant::now();
-                    TcpStream::connect_timeout(&addr, Duration::from_millis(2500)).ok()?;
-                    Some(t.elapsed().as_millis() as u32)
-                });
-                Ping { id: s.id, ms }
-            })
-        })
-        .collect();
-    handles.into_iter().filter_map(|h| h.join().ok()).collect()
-}
-
 #[derive(Serialize, Debug, PartialEq)]
 pub struct Proc {
     name: String,
@@ -1258,9 +1252,14 @@ pub async fn vless_profile_view(id: String) -> Result<String, String> {
     .await
 }
 
+/// Пинг одного сервера: время установки TCP-соединения, лучший из двух замеров. `None`: нет ответа.
 #[tauri::command]
-pub async fn vless_ping() -> Result<Vec<Ping>, String> {
-    blocking(|| Ok(ping_blocking())).await
+pub async fn vless_ping_one(id: String) -> Result<Option<u32>, String> {
+    blocking(move || {
+        let s = read_profiles().into_iter().find(|s| s.id == id).ok_or("Такого сервера нет.")?;
+        Ok(parse_link(&s.link).ok().and_then(|n| crate::fptn::tcp_ping(&n.address, n.port)))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1284,16 +1283,113 @@ fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
-async fn fetch_sub(url: &str) -> Result<String, String> {
+/// Что сервис подписки сообщает в заголовках ответа.
+#[derive(Debug, Default, Clone, PartialEq)]
+pub(crate) struct SubMeta {
+    pub(crate) title: String,
+    pub(crate) upload: u64,
+    pub(crate) download: u64,
+    pub(crate) total: u64,
+    pub(crate) expire: u64,
+    pub(crate) has_usage: bool,
+    pub(crate) web: String,
+    pub(crate) support: String,
+    pub(crate) announce: String,
+    pub(crate) interval: u64,
+}
+
+/// `upload=1; download=2; total=3; expire=4` (значения иногда дробные).
+fn parse_userinfo(s: &str) -> Option<(u64, u64, u64, u64)> {
+    let (mut up, mut down, mut total, mut exp) = (0, 0, 0, 0);
+    let mut any = false;
+    for part in s.split(';') {
+        let Some((k, v)) = part.split_once('=') else { continue };
+        let Some(n) = v.trim().parse::<f64>().ok().filter(|x| x.is_finite() && *x >= 0.0) else { continue };
+        let n = n as u64;
+        match k.trim().to_ascii_lowercase().as_str() {
+            "upload" => up = n,
+            "download" => down = n,
+            "total" => total = n,
+            "expire" => exp = n,
+            _ => continue,
+        }
+        any = true;
+    }
+    any.then_some((up, down, total, exp))
+}
+
+/// Текст из заголовка: `base64:…` раскодируется, остальное остаётся как есть.
+fn header_text(v: &str) -> String {
+    use base64::Engine;
+    let t = v.trim();
+    if let Some(b) = t.strip_prefix("base64:") {
+        let b: String = b.trim().chars().filter(|c| !c.is_whitespace() && *c != '=').collect();
+        for eng in [&base64::engine::general_purpose::STANDARD_NO_PAD, &base64::engine::general_purpose::URL_SAFE_NO_PAD] {
+            if let Ok(raw) = eng.decode(b.as_bytes()) {
+                if let Ok(s) = String::from_utf8(raw) {
+                    return clean_name(&s);
+                }
+            }
+        }
+        return String::new();
+    }
+    clean_name(&percent_decode(t))
+}
+
+fn header_url(v: &str) -> String {
+    let t = v.trim();
+    if valid_sub_url(t) { t.to_string() } else { String::new() }
+}
+
+/// Разбор заголовков. `get` отдаёт значение заголовка по имени в нижнем регистре.
+pub(crate) fn parse_meta(get: impl Fn(&str) -> Option<String>) -> SubMeta {
+    let mut m = SubMeta::default();
+    if let Some((u, d, t, e)) = get("subscription-userinfo").as_deref().and_then(parse_userinfo) {
+        m.upload = u;
+        m.download = d;
+        m.total = t;
+        m.expire = e;
+        m.has_usage = true;
+    }
+    m.title = get("profile-title").map(|v| header_text(&v)).unwrap_or_default();
+    m.web = get("profile-web-page-url").map(|v| header_url(&v)).unwrap_or_default();
+    m.support = get("support-url").map(|v| header_url(&v)).unwrap_or_default();
+    m.announce = get("announce").map(|v| header_text(&v)).unwrap_or_default();
+    m.interval = get("profile-update-interval").and_then(|v| v.trim().parse::<u64>().ok()).filter(|h| (1..=720).contains(h)).unwrap_or(0);
+    m
+}
+
+async fn fetch_sub(url: &str) -> Result<(String, SubMeta), String> {
     let resp = crate::modules::client()?.get(url).send().await.map_err(|e| format!("Не удалось скачать подписку: {e}"))?;
     if !resp.status().is_success() {
         return Err(format!("Подписка: сервер ответил {}", resp.status()));
     }
+    let meta = parse_meta(|name| resp.headers().get(name).map(|v| String::from_utf8_lossy(v.as_bytes()).to_string()));
     let bytes = resp.bytes().await.map_err(|e| format!("Обрыв загрузки подписки: {e}"))?;
     if bytes.len() > 4 * 1024 * 1024 {
         return Err("Подписка слишком большая.".into());
     }
-    Ok(String::from_utf8_lossy(&bytes).to_string())
+    Ok((String::from_utf8_lossy(&bytes).to_string(), meta))
+}
+
+fn fill_meta(sub: &mut Sub, m: &SubMeta) {
+    sub.upload = m.upload;
+    sub.download = m.download;
+    sub.total = m.total;
+    sub.expire = m.expire;
+    sub.has_usage = m.has_usage;
+    sub.web = m.web.clone();
+    sub.support = m.support.clone();
+    sub.announce = m.announce.clone();
+    sub.interval = m.interval;
+}
+
+/// Имя сервера из адреса подписки: `https://sub.example.com/x` → `sub.example.com`.
+fn url_host(u: &str) -> String {
+    let t = u.split("://").nth(1).unwrap_or(u);
+    let t = t.split(['/', '?', '#']).next().unwrap_or("");
+    let t = t.rsplit('@').next().unwrap_or(t);
+    t.split(':').next().unwrap_or("").to_string()
 }
 
 /// Заменяет профили подписки свежими. Свои профили и выбор сохраняются.
@@ -1330,7 +1426,7 @@ pub async fn vless_sub_add(name: String, url: String) -> Result<Imported, String
     if !valid_sub_url(&url) {
         return Err("Адрес подписки должен начинаться с https://".into());
     }
-    let text = fetch_sub(&url).await?;
+    let (text, meta) = fetch_sub(&url).await?;
     blocking(move || {
         let (links, skipped) = parse_bundle(&text);
         if links.is_empty() {
@@ -1342,9 +1438,17 @@ pub async fn vless_sub_add(name: String, url: String) -> Result<Imported, String
             return Err("Эта подписка уже добавлена. Обновите её кнопкой.".into());
         }
         let (count, _) = apply_sub(&id, &links)?;
-        let nm = clean_name(&name);
+        let mut nm = clean_name(&name);
+        if nm.is_empty() {
+            nm = meta.title.clone();
+        }
+        if nm.is_empty() {
+            nm = clean_name(&url_host(&url));
+        }
         c = load_config();
-        c.subs.push(Sub { id, name: if nm.is_empty() { "Подписка".into() } else { nm }, url, updated: now(), count });
+        let mut sub = Sub { id, name: if nm.is_empty() { "Подписка".into() } else { nm }, url, updated: now(), count, ..Sub::default() };
+        fill_meta(&mut sub, &meta);
+        c.subs.push(sub);
         save_config(&c)?;
         Ok(Imported { info: info(), message: format!("Подписка добавлена. {}", report(count, 0, 0, skipped)) })
     })
@@ -1354,7 +1458,7 @@ pub async fn vless_sub_add(name: String, url: String) -> Result<Imported, String
 #[tauri::command]
 pub async fn vless_sub_refresh(id: String) -> Result<Imported, String> {
     let url = load_config().subs.into_iter().find(|s| s.id == id).map(|s| s.url).ok_or("Подписка не найдена.")?;
-    let text = fetch_sub(&url).await?;
+    let (text, meta) = fetch_sub(&url).await?;
     blocking(move || {
         let (links, skipped) = parse_bundle(&text);
         if links.is_empty() {
@@ -1369,6 +1473,7 @@ pub async fn vless_sub_refresh(id: String) -> Result<Imported, String> {
         if let Some(s) = c.subs.iter_mut().find(|s| s.id == id) {
             s.updated = now();
             s.count = count;
+            fill_meta(s, &meta);
         }
         save_config(&c)?;
         let mut m = format!("Подписка обновлена: профилей {count}.");
@@ -1379,6 +1484,20 @@ pub async fn vless_sub_refresh(id: String) -> Result<Imported, String> {
             m += &format!(" Пропущено строк других протоколов: {skipped}.");
         }
         Ok(Imported { info: info(), message: m })
+    })
+    .await
+}
+
+/// Открывает в браузере страницу подписки или поддержки из заголовков подписки. Адрес берётся из сохранённых данных, а не от окна.
+#[tauri::command]
+pub async fn vless_sub_open(id: String, what: String) -> Result<(), String> {
+    blocking(move || {
+        let sub = load_config().subs.into_iter().find(|s| s.id == id).ok_or("Подписка не найдена.")?;
+        let url = if what == "support" { sub.support } else { sub.web };
+        if !valid_sub_url(&url) {
+            return Err("У подписки нет такой ссылки.".into());
+        }
+        crate::settings::launch(&url)
     })
     .await
 }
@@ -1411,6 +1530,28 @@ mod tests {
 
     fn link(q: &str) -> String {
         format!("vless://{UUID}@example.com:443?{q}#My%20Server")
+    }
+
+    #[test]
+    fn subscription_headers() {
+        use std::collections::HashMap;
+        let mut h: HashMap<&str, &str> = HashMap::new();
+        h.insert("subscription-userinfo", "upload=455727941; download=6174315083.5; total=1073741824000; expire=2218532293");
+        h.insert("profile-title", "base64:0KLQtdGB0YI=");
+        h.insert("profile-web-page-url", "https://panel.example.com/sub/abc");
+        h.insert("support-url", "javascript:alert(1)");
+        h.insert("profile-update-interval", "12");
+        let m = parse_meta(|k| h.get(k).map(|v| v.to_string()));
+        assert_eq!((m.upload, m.download, m.total, m.expire, m.has_usage), (455727941, 6174315083, 1073741824000, 2218532293, true));
+        assert_eq!(m.title, "Тест");
+        assert_eq!(m.web, "https://panel.example.com/sub/abc");
+        assert_eq!(m.support, "");
+        assert_eq!(m.interval, 12);
+        let none = parse_meta(|_| None);
+        assert!(!none.has_usage && none.total == 0 && none.title.is_empty());
+        assert_eq!(parse_userinfo("total=0"), Some((0, 0, 0, 0)));
+        assert_eq!(parse_userinfo("мусор"), None);
+        assert_eq!(url_host("https://user@sub.example.com:8443/x?y=1"), "sub.example.com");
     }
 
     #[test]

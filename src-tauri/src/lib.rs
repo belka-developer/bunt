@@ -8,7 +8,7 @@ mod integrity;
 mod modules;
 mod settings;
 mod fptn;
-mod fptn_geo;
+mod geo;
 mod wg;
 mod dns;
 mod vless;
@@ -311,7 +311,8 @@ pub fn run() {
             vless::vless_select,
             vless::vless_config_set,
             vless::vless_profile_view,
-            vless::vless_ping,
+            vless::vless_ping_one,
+            vless::vless_sub_open,
             vless::vless_processes,
             vless::vless_log,
             vless::vless_sub_add,

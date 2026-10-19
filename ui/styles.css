@@ -457,3 +457,33 @@ body.app .view { height: 100vh; overflow-y: auto; }
 .qr-img svg { width: 100%; height: 100%; display: block; }
 .qr-info { display: grid; gap: 6px; min-width: 0; flex: 1 1 180px; }
 .qr-info .mono { overflow-wrap: anywhere; font-size: 12.5px; }
+
+/* VLESS: подписки и серверы блоками */
+.sgrp { border: 1px solid var(--line); border-radius: 12px; background: var(--win); padding: 12px 12px 14px; margin-top: 14px; }
+.sgrp.plain { background: transparent; }
+.sg-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.sg-toggle { display: inline-flex; align-items: center; gap: 8px; background: none; border: 0; color: var(--fg); font: inherit; font-weight: 600; font-size: 14px; cursor: pointer; padding: 2px 4px 2px 0; min-width: 0; text-align: left; }
+.sg-toggle .ic { width: 14px; height: 14px; color: var(--muted); transition: transform 0.15s; flex: none; }
+.sg-toggle[aria-expanded="true"] .ic { transform: rotate(90deg); }
+.sg-toggle .nm { overflow-wrap: anywhere; }
+.sg-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.sg-meta { color: var(--faint); font-size: 12px; margin-top: 2px; }
+.usage { margin-top: 10px; }
+.ubar { height: 8px; border-radius: 999px; background: var(--panel-2); overflow: hidden; }
+.ufill { display: block; height: 100%; border-radius: 999px; background: var(--accent); min-width: 2px; transition: width 0.3s; }
+.ufill.warn { background: var(--warn); }
+.ufill.bad { background: var(--bad); }
+.uline { display: flex; justify-content: space-between; gap: 4px 14px; flex-wrap: wrap; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+.uline b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.sg-note { margin-top: 8px; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.sgrp .srvs { margin-top: 12px; }
+.vcard { cursor: pointer; }
+.vcard .sf { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.vcard .sf .ad { flex: 1 1 100%; min-width: 0; overflow-wrap: anywhere; }
+.vtools { display: inline-flex; gap: 2px; margin-left: auto; margin-right: -4px; }
+.btn.xs { height: 24px; padding: 0 7px; font-size: 11.5px; border-radius: 6px; }
+.btn.xs .ic { width: 12px; height: 12px; }
+.vcard .btn.xs { background: transparent; border-color: transparent; color: var(--muted); }
+.vcard .btn.xs:hover { background: var(--panel-2); border-color: var(--line-2); color: var(--fg); }
+.vcard .btn.xs:disabled { opacity: 0.35; }
+.vcard.bad-link { opacity: 0.7; }

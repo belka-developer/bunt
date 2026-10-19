@@ -241,7 +241,7 @@ pub(crate) fn parse_token(token: &str) -> Result<Vec<ServerEntry>, String> {
                 .iter()
                 .find_map(|k| sv.get(*k).and_then(|x| x.as_str()))
                 .unwrap_or("");
-            out.push(ServerEntry { label: super::fptn_geo::label(&name), code: super::fptn_geo::code_for(&name, hint), name, host, port });
+            out.push(ServerEntry { label: super::geo::label(&name), code: super::geo::code_for(&name, hint), name, host, port });
         }
     }
     if out.is_empty() {
@@ -769,7 +769,7 @@ fn info(with_adapter: bool) -> Info {
 
 /// Время установки TCP-соединения с сервером в миллисекундах: лучший из двух замеров.
 /// `None`, если сервер не ответил за 2,5 секунды.
-fn tcp_ping(host: &str, port: u16) -> Option<u32> {
+pub(crate) fn tcp_ping(host: &str, port: u16) -> Option<u32> {
     let addr = (host, port).to_socket_addrs().ok()?.next()?;
     let mut best: Option<u32> = None;
     for _ in 0..2 {

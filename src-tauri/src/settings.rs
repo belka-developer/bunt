@@ -234,13 +234,20 @@ pub fn open_url(url: String) -> Result<(), String> {
     if !ok {
         return Err("Эту ссылку открыть нельзя".into());
     }
+    launch(&url)
+}
+
+/// Открывает адрес в браузере по умолчанию. Проверка, что адрес разрешён, лежит на вызывающем.
+pub(crate) fn launch(url: &str) -> Result<(), String> {
     #[cfg(windows)]
     {
         Command::new("explorer")
-            .arg(&url)
+            .arg(url)
             .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
+    #[cfg(not(windows))]
+    let _ = url;
     Ok(())
 }
