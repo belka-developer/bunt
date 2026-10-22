@@ -6,7 +6,7 @@
 <a href="LICENSE"><img src="https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-GPLv3-8095a8" alt="GPLv3"></a>
 </p>
 
-# Бунт
+# Bunt
 
 **Бунт** собирает сетевые инструменты в одном окне Windows: обход блокировок Discord, YouTube и Telegram, VPN (FPTN, WireGuard, AmneziaWG, VLESS) и быстрая смена DNS. Ничего не нужно настраивать руками в консоли и батниках: нажали «Установить», затем переключатель.
 
