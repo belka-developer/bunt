@@ -102,7 +102,7 @@
     var nowS = Math.floor(Date.now() / 1000), GB = 1073741824;
     S.v.config.subs = [
       { id: 's1', name: 'Быстрый VPN', url: 'https://sub.example.net/abc', updated: nowS - 5400, count: 4, upload: 6 * GB, download: 71 * GB, total: 100 * GB, expire: nowS + 24 * 86400, has_usage: true, web: 'https://example.net/cabinet', support: 'https://t.me/example', announce: '', interval: 24 },
-      { id: 's2', name: 'Резервная подписка', url: 'https://sub.example.org/xyz', updated: nowS - 86400, count: 2, upload: 2 * GB, download: 19 * GB, total: 0, expire: 0, has_usage: true, web: '', support: '', announce: 'Безлимит до конца месяца', interval: 0 }
+      { id: 's2', name: 'Резервная подписка', url: 'https://sub.example.org/xyz', updated: nowS - 86400, count: 2, upload: 2 * GB, download: 19 * GB, total: 0, expire: 0, has_usage: true, seen: '', web: '', support: '', announce: 'Безлимит до конца месяца', interval: 0 }
     ];
     S.fptn.servers = [['Finland', 'fi'], ['Germany', 'de'], ['Netherlands', 'nl'], ['Sweden', 'se'], ['Kazakhstan', 'kz'], ['Server 6', '']].map(function (x, i) { return { name: x[0], label: x[0], code: x[1], host: '203.0.113.' + (10 + i), port: 443 }; });
   }
@@ -1399,7 +1399,6 @@
     v.running = !!st.running; v.tun = !!st.tun; v.dirty = !!st.dirty; v.adapter = !!st.adapter;
     S.on.vless = v.running;
     v.socks = String(v.config.socks_port); v.http = String(v.config.http_port); v.dns_text = (v.config.dns || []).join(', ');
-    if (v.view && !v.profiles.some(function (p) { return p.id === v.viewName; })) v.view = '';
     v.loaded = true;
   }
   function vErr(err) { toast(String(err).slice(0, 240), 'warn'); }
@@ -1436,11 +1435,6 @@
     var v = S.v;
     if (v.running && v.config.active === id) { toast('Этот сервер сейчас используется: сначала отключите VLESS.', 'warn'); return; }
     T.core.invoke('vless_delete', { ids: [id] }).then(applyV).catch(vErr).then(renderAll);
-  }
-  function vView(id) {
-    var v = S.v;
-    if (v.view && v.viewName === id) { v.view = ''; renderAll(); return; }
-    T.core.invoke('vless_profile_view', { id: id }).then(function (t) { v.view = t; v.viewName = id; renderAll(); }).catch(vErr);
   }
   /* пинг серверов: по четыре сразу, блоки проверяемых серверов пульсируют оранжевым */
   var vPingRun = false;
@@ -1514,14 +1508,21 @@
   }
   function daysWord(n) { var m = n % 100, d = n % 10; return (m > 10 && m < 15) ? 'дней' : d === 1 ? 'день' : (d > 1 && d < 5) ? 'дня' : 'дней'; }
   function usageHtml(s) {
-    if (!s.has_usage) return '<div class="sg-meta">Сервис не сообщает остаток трафика.</div>';
-    var used = (s.upload || 0) + (s.download || 0), out = '<div class="usage" title="Получено: ' + fmtTraffic(s.download) + ', отправлено: ' + fmtTraffic(s.upload) + '">';
+    var used = (s.upload || 0) + (s.download || 0);
+    var tip = 'Получено: ' + fmtTraffic(s.download) + ', отправлено: ' + fmtTraffic(s.upload);
+    if (!s.has_usage) {
+      return '<div class="usage" title="' + esc(s.seen ? 'Сервис прислал заголовки: ' + s.seen : 'Сервис не прислал ни одного служебного заголовка') + '">' +
+        '<div class="ubar none"><span class="ufill"></span></div>' +
+        '<div class="uline"><span>Сервис не сообщает трафик</span><span>нажмите «Обновить», чтобы спросить снова</span></div></div>';
+    }
+    var out = '<div class="usage" title="' + esc(tip) + '">';
     if (s.total > 0) {
       var pct = Math.min(100, used / s.total * 100), left = Math.max(0, s.total - used);
-      out += '<div class="ubar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(pct) + '"><span class="ufill ' + (pct >= 90 ? 'bad' : pct >= 70 ? 'warn' : '') + '" style="width:' + pct.toFixed(1) + '%"></span></div>' +
+      out += '<div class="ubar" role="progressbar" aria-label="Израсходованный трафик" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(pct) + '"><span class="ufill ' + (pct >= 90 ? 'bad' : pct >= 70 ? 'warn' : '') + '" style="width:' + Math.max(pct, 1.5).toFixed(1) + '%"></span></div>' +
         '<div class="uline"><span>Использовано <b>' + fmtTraffic(used) + '</b> из <b>' + fmtTraffic(s.total) + '</b></span><span>Осталось <b>' + fmtTraffic(left) + '</b> · ' + (pct < 1 && used > 0 ? '<1' : Math.round(pct)) + '%</span></div>';
     } else {
-      out += '<div class="uline"><span>Использовано <b>' + fmtTraffic(used) + '</b></span><span>Без лимита трафика</span></div>';
+      out += '<div class="ubar inf" role="progressbar" aria-label="Трафик без лимита"><span class="ufill" style="width:100%"></span></div>' +
+        '<div class="uline"><span>Использовано <b>' + fmtTraffic(used) + '</b></span><span>Без лимита трафика</span></div>';
     }
     if (s.expire > 0) {
       var days = Math.ceil((s.expire * 1000 - Date.now()) / 86400000), dt = new Date(s.expire * 1000).toLocaleDateString('ru-RU');
@@ -1537,12 +1538,10 @@
     var tag = live ? '<span class="tag ok">включён</span>' : busy ? '<span class="tag warn">…</span>'
       : !(p.id in v.ping) ? '' : ms == null ? '<span class="tag bad">нет ответа</span>'
       : '<span class="tag ' + (ms === best ? 'ok' : ms > 250 ? 'warn' : '') + '">' + ms + ' мс</span>';
+    var del = sub ? '' : '<span class="vtools"><button class="btn xs" data-act="vDel" data-arg="' + esc(p.id) + '" aria-label="Удалить ' + esc(p.name) + '" title="Удалить"' + (live ? ' disabled' : '') + '>' + ico('x') + '</button></span>';
     return '<div class="strat srv vcard' + (sel ? ' cur' : '') + (busy ? ' scan' : '') + (p.ok ? '' : ' bad-link') + '" role="button" tabindex="0" data-act="vPick" data-arg="' + esc(p.id) + '" aria-pressed="' + sel + '">' +
-      '<span class="shd"><span class="sn">' + flagHtml(p.code) + '<span class="nm">' + esc(p.label || p.name) + '</span>' + (sel ? ico('check') : '') + '</span>' + tag + '</span>' +
-      '<span class="sf"><span class="ad">' + esc(info) + '</span><span class="vtools">' +
-      '<button class="btn xs" data-act="vView" data-arg="' + esc(p.id) + '"' + (p.ok ? '' : ' disabled') + ' title="Показать описание сервера, ключи скрыты">Описание</button>' +
-      (sub ? '' : '<button class="btn xs" data-act="vDel" data-arg="' + esc(p.id) + '" aria-label="Удалить ' + esc(p.name) + '" title="Удалить"' + (live ? ' disabled' : '') + '>' + ico('x') + '</button>') +
-      '</span></span></div>';
+      '<span class="shd"><span class="sn">' + flagHtml(p.code) + '<span class="nm">' + esc(p.label || p.name) + '</span>' + (sel ? ico('check') : '') + '</span><span class="vright">' + tag + del + '</span></span>' +
+      '<span class="sf"><span class="ad">' + esc(info) + '</span></span></div>';
   }
   function vBest() {
     var b = null;
@@ -1675,7 +1674,6 @@
     var set = function (id, t) { var e = $(id); if (e) e.textContent = t; };
     set('#vVer', c.cur || '–');
     var gr = $('#vGroups'); if (gr) gr.innerHTML = vGroups();
-    var vw = $('#vView'); if (vw) { vw.hidden = !v.view; vw.textContent = v.view || ''; }
     var rl = $('#vRules');
     if (rl) rl.innerHTML = !cfg.rules.length ? '<div class="empty"><span>Правил нет: весь трафик идёт по варианту «по умолчанию».</span></div>' : cfg.rules.map(function (r, i) {
       var cls = r.action === 'proxy' ? 'ok' : r.action === 'block' ? 'bad' : '';
@@ -2297,7 +2295,7 @@
     },
     copyTg: function () { copyText($('#tgLink').value, 'Ссылка скопирована'); },
     vImport: vImport, vPing: function () { vPingAll(false); }, vToggle: vToggle, vSubOpen: vSubOpen, vRepair: vRepair, vLog: vLog, vQuick: vQuick, vProcs: vProcs, vRuleAdd: vRuleAdd,
-    vPick: function (a) { vPick(a); }, vView: function (a) { vView(a); }, vDel: function (a) { vDel(a); }, vDefault: function (a) { vDefault(a); }, vMode: function (a) { vMode(a); },
+    vPick: function (a) { vPick(a); }, vDel: function (a) { vDel(a); }, vDefault: function (a) { vDefault(a); }, vMode: function (a) { vMode(a); },
     vRuleAct: function (a) { vRuleAct(a); }, vRuleDel: function (a) { vRuleDel(a); }, vPickProc: function (a) { vPickProc(a); },
     vSubAdd: vSubAdd, vSubRefresh: function (a) { vSubRefresh(a); }, vSubRemove: function (a) { vSubRemove(a); },
     pickWg: function () { $('#wgFile').click(); },

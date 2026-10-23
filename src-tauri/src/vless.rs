@@ -135,6 +135,8 @@ pub struct Sub {
     pub web: String,
     pub support: String,
     pub announce: String,
+    /// Какие служебные заголовки прислал сервис (для подсказки, если трафик не пришёл)
+    pub seen: String,
     /// Как часто сервис просит обновлять подписку (часы), 0: не указано
     pub interval: u64,
 }
@@ -1295,6 +1297,7 @@ pub(crate) struct SubMeta {
     pub(crate) web: String,
     pub(crate) support: String,
     pub(crate) announce: String,
+    pub(crate) seen: String,
     pub(crate) interval: u64,
 }
 
@@ -1359,17 +1362,64 @@ pub(crate) fn parse_meta(get: impl Fn(&str) -> Option<String>) -> SubMeta {
     m
 }
 
-async fn fetch_sub(url: &str) -> Result<(String, SubMeta), String> {
-    let resp = crate::modules::client()?.get(url).send().await.map_err(|e| format!("Не удалось скачать подписку: {e}"))?;
+async fn fetch_sub_as(url: &str, agent: Option<&str>) -> Result<(String, SubMeta), String> {
+    let mut req = crate::modules::client()?.get(url).header("Accept", "*/*");
+    if let Some(ua) = agent {
+        req = req.header("User-Agent", ua);
+    }
+    let resp = req.send().await.map_err(|e| format!("Не удалось скачать подписку: {e}"))?;
     if !resp.status().is_success() {
         return Err(format!("Подписка: сервер ответил {}", resp.status()));
     }
-    let meta = parse_meta(|name| resp.headers().get(name).map(|v| String::from_utf8_lossy(v.as_bytes()).to_string()));
+    let mut meta = parse_meta(|name| resp.headers().get(name).map(|v| String::from_utf8_lossy(v.as_bytes()).to_string()));
+    let mut seen: Vec<String> = resp
+        .headers()
+        .keys()
+        .map(|k| k.as_str().to_string())
+        .filter(|k| k.starts_with("profile-") || k.starts_with("subscription-") || k == "support-url" || k == "announce" || k == "content-disposition")
+        .collect();
+    seen.sort();
+    seen.dedup();
+    meta.seen = seen.join(", ");
     let bytes = resp.bytes().await.map_err(|e| format!("Обрыв загрузки подписки: {e}"))?;
     if bytes.len() > 4 * 1024 * 1024 {
         return Err("Подписка слишком большая.".into());
     }
     Ok((String::from_utf8_lossy(&bytes).to_string(), meta))
+}
+
+/// Многие панели присылают трафик и срок только в ответ на запрос известного клиента. Если с обычным именем Бунта
+/// данных нет, спрашиваем ещё раз, назвавшись популярным клиентом, и берём из ответа только заголовки.
+async fn fetch_sub(url: &str) -> Result<(String, SubMeta), String> {
+    let (text, mut meta) = fetch_sub_as(url, None).await?;
+    if !meta.has_usage {
+        if let Ok((_, m2)) = fetch_sub_as(url, Some("v2rayN/7.15")).await {
+            if m2.has_usage {
+                if meta.title.is_empty() {
+                    meta.title = m2.title.clone();
+                }
+                if meta.web.is_empty() {
+                    meta.web = m2.web.clone();
+                }
+                if meta.support.is_empty() {
+                    meta.support = m2.support.clone();
+                }
+                if meta.announce.is_empty() {
+                    meta.announce = m2.announce.clone();
+                }
+                if meta.interval == 0 {
+                    meta.interval = m2.interval;
+                }
+                meta.upload = m2.upload;
+                meta.download = m2.download;
+                meta.total = m2.total;
+                meta.expire = m2.expire;
+                meta.has_usage = true;
+                meta.seen = m2.seen;
+            }
+        }
+    }
+    Ok((text, meta))
 }
 
 fn fill_meta(sub: &mut Sub, m: &SubMeta) {
@@ -1381,6 +1431,7 @@ fn fill_meta(sub: &mut Sub, m: &SubMeta) {
     sub.web = m.web.clone();
     sub.support = m.support.clone();
     sub.announce = m.announce.clone();
+    sub.seen = m.seen.clone();
     sub.interval = m.interval;
 }
 

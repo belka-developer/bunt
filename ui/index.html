@@ -305,10 +305,20 @@
                   <div class="panel-head"><h3>Серверы</h3><button class="btn sm" data-act="vPing" id="vPingBtn" title="Проверить время ответа всех серверов"><svg class="ic"><use href="#i-refresh"/></svg>Пинг</button></div>
                   <div class="field-row"><input class="field mono" id="vlessIn" placeholder="vless://… или адрес подписки https://…" aria-label="Ссылка vless или подписка"><button class="btn primary" data-act="vImport"><svg class="ic"><use href="#i-plus"/></svg>Добавить</button></div>
                   <p class="note mt-s" id="vlessMsg">Вставьте ссылку vless:// (можно несколько, по одной в строке) или адрес подписки. Подписка покажет остаток трафика и срок, если сервис их сообщает.</p>
-                  <pre class="logbox" id="vView" hidden></pre>
                   <div id="vGroups"></div>
-                  <div class="row"><div class="lbl">Обновлять подписки сами<small>Когда подходит срок (чаще всего раз в сутки). Если сервер из подписки включён, она обновится после отключения</small></div><button class="sw" role="switch" data-sw="v.config.sub_auto" aria-label="Обновлять подписки сами"></button></div>
-                  <p class="note mt-s">Серверы других протоколов (vmess, trojan и др.) из подписок пропускаются.</p>
+                </div>
+              </div>
+              <div class="stack">
+                <div class="panel">
+                  <h3>Режим</h3>
+                  <div class="row"><span class="lbl">Как пускать трафик</span>
+                    <span class="seg" role="group" aria-label="Режим"><button data-act="vMode" data-arg="tun" id="vModeTun">TUN</button><button data-act="vMode" data-arg="proxy" id="vModeProxy">Прокси</button></span></div>
+                  <p class="note" id="vModeNote"></p>
+                  <div id="vPorts">
+                    <div class="row"><span class="lbl">Порт SOCKS<small>Локальный адрес 127.0.0.1</small></span><input class="field mono" data-bind="v.socks" inputmode="numeric" aria-label="Порт SOCKS" style="width:100px"></div>
+                    <div class="row"><span class="lbl">Порт HTTP<small>Его получает системный прокси Windows</small></span><input class="field mono" data-bind="v.http" inputmode="numeric" aria-label="Порт HTTP" style="width:100px"></div>
+                  </div>
+                  <div id="vDnsRow" class="row"><span class="lbl">DNS в режиме TUN<small>Через запятую. Запросы идут через ядро по общим правилам</small></span><input class="field mono" data-bind="v.dns_text" spellcheck="false" aria-label="DNS в режиме TUN" style="width:190px"></div>
                 </div>
                 <div class="panel">
                   <div class="panel-head"><h3>Правила</h3><button class="btn sm" data-act="vQuick">Российские сайты напрямую</button></div>
@@ -325,18 +335,10 @@
                   <div class="row" style="justify-content:flex-start;gap:8px;flex-wrap:wrap"><button class="btn sm" data-act="vProcs">Выбрать из запущенных приложений</button></div>
                   <p class="note mt-s" id="vRuleHint">Приложение: имя процесса (chrome.exe), полный путь или папка со слэшем на конце. Домен: example.com (с поддоменами), full:a.example.com, regexp:…, geosite:google. Сеть: 10.0.0.0/8 или geoip:ru. Изменения применяются при следующем подключении.</p>
                 </div>
-              </div>
-              <div class="stack">
                 <div class="panel">
-                  <h3>Режим</h3>
-                  <div class="row"><span class="lbl">Как пускать трафик</span>
-                    <span class="seg" role="group" aria-label="Режим"><button data-act="vMode" data-arg="tun" id="vModeTun">TUN</button><button data-act="vMode" data-arg="proxy" id="vModeProxy">Прокси</button></span></div>
-                  <p class="note" id="vModeNote"></p>
-                  <div id="vPorts">
-                    <div class="row"><span class="lbl">Порт SOCKS<small>Локальный адрес 127.0.0.1</small></span><input class="field mono" data-bind="v.socks" inputmode="numeric" aria-label="Порт SOCKS" style="width:100px"></div>
-                    <div class="row"><span class="lbl">Порт HTTP<small>Его получает системный прокси Windows</small></span><input class="field mono" data-bind="v.http" inputmode="numeric" aria-label="Порт HTTP" style="width:100px"></div>
-                  </div>
-                  <div id="vDnsRow" class="row"><span class="lbl">DNS в режиме TUN<small>Через запятую. Запросы идут через ядро по общим правилам</small></span><input class="field mono" data-bind="v.dns_text" spellcheck="false" aria-label="DNS в режиме TUN" style="width:190px"></div>
+                  <h3>Подписки</h3>
+                  <div class="row"><div class="lbl">Обновлять подписки сами<small>Когда подходит срок (чаще всего раз в сутки). Если сервер из подписки включён, она обновится после отключения</small></div><button class="sw" role="switch" data-sw="v.config.sub_auto" aria-label="Обновлять подписки сами"></button></div>
+                  <p class="note mt-s">Серверы других протоколов (vmess, trojan и др.) из подписок пропускаются.</p>
                 </div>
                 <div class="panel" id="vStatsBox" hidden>
                   <h3>Соединение</h3>
