@@ -89,7 +89,7 @@
       { t: 'Проверка целостности архива', st: 'ok' },
       { t: 'Сравнение с эталонной версией', st: 'ok' }
     ] },
-    settings: { autostart: true, tray: true, notify: true, autoupdate: true }
+    settings: { autostart: true, autostart_admin: false, tray: true, notify: true, autoupdate: true }
   };
   if (!inTauri) {   /* в обычном браузере показываем примерные серверы */
     S.fptn.tokenSet = true; S.fptn.hint = 'fptnb…demo';
@@ -516,14 +516,21 @@
   }
   /* автозапуск: запись в «Автозагрузке» диспетчера задач, Бунт стартует без прав администратора */
   function renderAutostart() {
-    var el = $('#autoInfo');
+    var el = $('#autoInfo'), ad = $('#autoAdminInfo');
     if (!el) return;
-    if (!inTauri) { el.textContent = ''; return; }
+    if (!inTauri) { el.textContent = ''; if (ad) ad.textContent = ''; return; }
     var base = 'Бунт стартует вместе с Windows в трее и без прав администратора, а в окне предложит их дать. ';
     el.textContent = base;
     T.core.invoke('autostart_exists').then(function (ok) {
       el.textContent = base + (ok ? 'Запись в автозагрузке создана.' : 'Запись в автозагрузке не создана.');
     }).catch(function () {});
+    if (ad) {
+      ad.textContent = '';
+      if (S.settings.autostart_admin) T.core.invoke('autostart_task').then(function (ok) {
+        ad.textContent = ok === true ? 'Задача в планировщике создана.' : ok === false ? 'Задача в планировщике не найдена: выключите и включите переключатель заново.' : 'Задачу можно проверить только с правами администратора.';
+        ad.className = ok === false ? 'warn-text' : '';
+      }).catch(function () {});
+    }
   }
   /* права администратора: без них запрет и установка компонентов не работают */
   function renderAdmin() {
@@ -751,7 +758,7 @@
   function tgAutostart(on) {
     if (!inTauri || !installed('telegram')) { S.tgc.autostart = false; toast('Сначала установите компонент.', 'warn'); renderAll(); return; }
     T.core.invoke('telegram_set_autostart', { on: on }).then(function () {
-      if (on && S.settings && !S.settings.autostart) {
+      if (on && S.settings && !S.settings.autostart && !S.settings.autostart_admin) {
         S.settings.autostart = true;
         saveSettings();
         toast('Автозапуск прокси включён. Бунт тоже будет запускаться вместе с Windows.');
@@ -2337,6 +2344,15 @@
     if (d.svc) { setSvc(d.svc, !S.on[d.svc]); return; }
     if (d.sw) {
       set(d.sw, !get(d.sw));
+      if (d.sw === 'settings.autostart_admin') {
+        if (inTauri && S.admin === false) { S.settings.autostart_admin = !S.settings.autostart_admin; adminNeeded(); sync(); return; }
+        if (S.settings.autostart_admin) S.settings.autostart = false;
+      }
+      if (d.sw === 'settings.autostart' && S.settings.autostart && S.settings.autostart_admin) {
+        S.settings.autostart = false; sync();
+        toast('Сейчас включён автозапуск с правами администратора, он заменяет обычный. Выключите его, если нужен обычный.', 'warn');
+        return;
+      }
       if (d.sw === 'tgc.autostart') { tgAutostart(S.tgc.autostart); renderAll(); return; }
       if (d.sw.indexOf('w.config.') === 0) { wSaveConfig(); renderAll(); return; }
       if (d.sw.indexOf('dn.') === 0) { renderAll(); return; }

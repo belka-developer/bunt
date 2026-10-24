@@ -3,6 +3,9 @@
 //! Настройки лежат в `%APPDATA%\\dev.belka.bunt\\settings.json`.
 //! Автозапуск сделан записью в разделе Run реестра текущего пользователя: она видна в
 //! «Автозагрузке» диспетчера задач. Бунт стартует без прав администратора и предлагает их дать.
+//! Для тех, кому это неудобно, есть второй вариант: задача планировщика Windows «при входе» с наивысшими
+//! правами. Она запускает Бунт сразу от администратора и без запроса UAC. Включить и выключить её можно только
+//! из Бунта с правами администратора, а при удалении программы установщик её убирает.
 
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf, sync::Mutex};
@@ -18,6 +21,8 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 #[serde(default)]
 pub struct Settings {
     pub autostart: bool,
+    /// Автозапуск с правами администратора (задача планировщика). Заменяет обычный автозапуск
+    pub autostart_admin: bool,
     /// Закрытие и сворачивание окна прячет Бунт в трей
     pub tray: bool,
     pub notify: bool,
@@ -26,7 +31,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { autostart: false, tray: true, notify: true, autoupdate: true }
+        Settings { autostart: false, autostart_admin: false, tray: true, notify: true, autoupdate: true }
     }
 }
 
@@ -106,9 +111,86 @@ fn apply_autostart(on: bool) -> Result<(), String> {
     }
 }
 
+/// Имя задачи планировщика для автозапуска с правами администратора.
+#[cfg_attr(not(windows), allow(dead_code))]
+const TASK_NAME: &str = "Bunt-AdminAutostart";
+
+/// Скрипт создания задачи. Нужны явные настройки: по умолчанию планировщик не запускает задачу от батареи
+/// и убивает её через 72 часа, а Бунт должен работать сколько угодно.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn task_create_script(exe: &str) -> String {
+    let exe = exe.replace('\'', "''");
+    format!(
+        "$me=[Security.Principal.WindowsIdentity]::GetCurrent().Name; \
+$a=New-ScheduledTaskAction -Execute '{exe}' -Argument '--hidden'; \
+$t=New-ScheduledTaskTrigger -AtLogOn -User $me; $t.Delay='PT5S'; \
+$p=New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive -RunLevel Highest; \
+$s=New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -StartWhenAvailable; \
+Register-ScheduledTask -TaskName '{TASK_NAME}' -Action $a -Trigger $t -Principal $p -Settings $s -Description 'Запуск Бунта при входе в Windows с правами администратора. Создана Бунтом и удаляется вместе с программой.' -Force | Out-Null; \
+if(Get-ScheduledTask -TaskName '{TASK_NAME}' -ErrorAction SilentlyContinue){{'ok'}}"
+    )
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn task_remove_script() -> String {
+    format!(
+        "Unregister-ScheduledTask -TaskName '{TASK_NAME}' -Confirm:$false -ErrorAction SilentlyContinue; \
+if(-not (Get-ScheduledTask -TaskName '{TASK_NAME}' -ErrorAction SilentlyContinue)){{'ok'}}"
+    )
+}
+
+/// Путь к exe из задачи или `None`, если задачи нет. Читать задачу надёжно получается только с правами администратора.
+#[cfg(windows)]
+fn task_exe() -> Option<String> {
+    let script = format!(
+        "$x=Get-ScheduledTask -TaskName '{TASK_NAME}' -ErrorAction SilentlyContinue; if($x){{ ($x.Actions | ForEach-Object {{ $_.Execute }}) -join '|' }}"
+    );
+    crate::fptn::ps(&script).map(|o| o.trim().to_string()).filter(|o| !o.is_empty())
+}
+
+/// Включает или выключает автозапуск с правами администратора. Создавать и удалять задачу может только администратор.
+fn apply_autostart_admin(on: bool) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        if !is_admin_sync() {
+            return Err("Нужны права администратора. Нажмите «Дать права» вверху окна.".into());
+        }
+        if on {
+            let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+            let out = crate::fptn::ps(&task_create_script(&exe.display().to_string())).unwrap_or_default();
+            if !out.trim().ends_with("ok") {
+                return Err("Не удалось создать задачу в планировщике Windows".into());
+            }
+            // обычный автозапуск заменяется: иначе Бунт стартовал бы дважды, и первым мог бы оказаться вариант без прав
+            apply_autostart(false)
+        } else {
+            let out = crate::fptn::ps(&task_remove_script()).unwrap_or_default();
+            if out.trim().ends_with("ok") {
+                Ok(())
+            } else {
+                Err("Не удалось удалить задачу из планировщика Windows".into())
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = on;
+        Ok(())
+    }
+}
+
 /// Запись должна указывать на текущий exe (путь мог измениться при переустановке).
 fn reconcile(s: &Settings) {
-    if s.autostart {
+    if s.autostart_admin {
+        // Задачу можно проверить и починить только с правами администратора. Обычный автозапуск не трогаем и не создаём.
+        #[cfg(windows)]
+        if is_admin_sync() {
+            let exe = std::env::current_exe().map(|e| e.display().to_string().to_lowercase()).unwrap_or_default();
+            if task_exe().map(|t| t.to_lowercase() != exe).unwrap_or(true) {
+                let _ = apply_autostart_admin(true);
+            }
+        }
+    } else if s.autostart {
         let _ = apply_autostart(true);
     } else {
         #[cfg(windows)]
@@ -191,7 +273,24 @@ pub async fn settings_set(
     let old = state.0.lock().unwrap().clone();
     let mut new = settings;
     let mut error = None;
-    if new.autostart != old.autostart {
+    if new.autostart_admin != old.autostart_admin {
+        match apply_autostart_admin(new.autostart_admin) {
+            Ok(()) => {
+                if new.autostart_admin {
+                    new.autostart = false;
+                }
+            }
+            Err(e) => {
+                new.autostart_admin = old.autostart_admin;
+                new.autostart = old.autostart;
+                error = Some(e);
+            }
+        }
+    } else if new.autostart && new.autostart_admin {
+        new.autostart = false;
+        error = Some("Сейчас включён автозапуск с правами администратора, он заменяет обычный. Выключите его, если нужен обычный.".to_string());
+    }
+    if error.is_none() && new.autostart != old.autostart {
         if let Err(e) = apply_autostart(new.autostart) {
             new.autostart = old.autostart;
             error = Some(e);
@@ -216,6 +315,27 @@ pub async fn autostart_exists() -> Result<bool, String> {
     {
         Ok(false)
     }
+}
+
+/// Есть ли задача автозапуска с правами администратора. `None`: без прав администратора это не проверить.
+#[tauri::command]
+pub async fn autostart_task() -> Result<Option<bool>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        #[cfg(windows)]
+        {
+            if is_admin_sync() {
+                Ok(Some(task_exe().is_some()))
+            } else {
+                Ok(None)
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            Ok(None)
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Открывает в браузере только известные ссылки проекта.
@@ -250,4 +370,37 @@ pub(crate) fn launch(url: &str) -> Result<(), String> {
     #[cfg(not(windows))]
     let _ = url;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn task_script_has_safe_settings() {
+        let t = task_create_script(r"C:\Program Files\Bunt\Bunt.exe");
+        assert!(t.contains("-RunLevel Highest") && t.contains("-AtLogOn") && t.contains("'--hidden'"));
+        // без этих настроек задачу убило бы через 72 часа, а на ноутбуке от батареи она вообще не стартовала бы
+        assert!(t.contains("-ExecutionTimeLimit ([TimeSpan]::Zero)") && t.contains("-AllowStartIfOnBatteries") && t.contains("-DontStopIfGoingOnBatteries"));
+        assert!(t.contains("-MultipleInstances IgnoreNew") && t.contains(TASK_NAME));
+        assert!(t.contains(r"-Execute 'C:\Program Files\Bunt\Bunt.exe'"));
+    }
+
+    #[test]
+    fn task_script_escapes_quotes_in_path() {
+        let t = task_create_script("C:\\O'Neil\\Bunt.exe");
+        assert!(t.contains("-Execute 'C:\\O''Neil\\Bunt.exe'"));
+    }
+
+    #[test]
+    fn task_remove_script_checks_result() {
+        let r = task_remove_script();
+        assert!(r.contains("Unregister-ScheduledTask") && r.contains(TASK_NAME) && r.contains("'ok'"));
+    }
+
+    #[test]
+    fn old_settings_files_still_load() {
+        let s: Settings = serde_json::from_str(r#"{"autostart":true,"tray":false}"#).unwrap();
+        assert!(s.autostart && !s.autostart_admin && !s.tray && s.notify && s.autoupdate);
+    }
 }

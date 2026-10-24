@@ -225,6 +225,7 @@ pub fn run() {
             integrity::integrity_verify_online,
             settings::open_url,
             settings::autostart_exists,
+            settings::autostart_task,
             settings::is_admin,
             settings::relaunch_as_admin,
             tray_set_discord,
