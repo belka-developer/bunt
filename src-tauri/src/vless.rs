@@ -74,13 +74,45 @@ fn ps_quote(s: &str) -> String {
     s.replace('\'', "''")
 }
 
-/// Закрывает файл с ключами от обычных пользователей.
+/// SID текущего пользователя (S-1-5-21-…), чтобы не потерять доступ к собственным файлам.
+#[cfg(windows)]
+fn current_sid() -> Option<String> {
+    let out = Command::new("whoami").args(["/user", "/fo", "csv", "/nh"]).creation_flags(CREATE_NO_WINDOW).output().ok()?;
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    sid_from_csv(&text)
+}
+
+fn sid_from_csv(text: &str) -> Option<String> {
+    let sid = text.trim().rsplit(',').next()?.trim().trim_matches('"').to_string();
+    if sid.starts_with("S-1-") && sid.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        Some(sid)
+    } else {
+        None
+    }
+}
+
+/// Аргументы icacls: система и администраторы всегда, плюс текущий пользователь
+/// (иначе ядро, запущенное без повышения, не сможет прочитать собственный конфиг).
+fn lock_args(sid: Option<&str>, dir: bool) -> Vec<String> {
+    let perm = if dir { ":(OI)(CI)F" } else { ":F" };
+    let mut a = vec!["/inheritance:r".to_string(), "/grant:r".to_string()];
+    a.push(format!("*S-1-5-18{perm}"));
+    a.push(format!("*S-1-5-32-544{perm}"));
+    if let Some(s) = sid {
+        a.push("/grant:r".to_string());
+        a.push(format!("*{s}{perm}"));
+    }
+    a
+}
+
+/// Закрывает файл с ключами от других пользователей: доступ у системы, администраторов и текущего пользователя.
 fn lock_down(path: &Path) {
     #[cfg(windows)]
     {
+        let sid = current_sid();
         let _ = Command::new("icacls")
             .arg(path)
-            .args(["/inheritance:r", "/grant:r", "*S-1-5-18:F", "*S-1-5-32-544:F"])
+            .args(lock_args(sid.as_deref(), path.is_dir()))
             .creation_flags(CREATE_NO_WINDOW)
             .output();
     }
@@ -468,7 +500,17 @@ fn link_id(link: &str) -> String {
 }
 
 fn read_profiles() -> Vec<Stored> {
-    file("profiles.json").ok().and_then(|p| fs::read_to_string(p).ok()).and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+    let Ok(p) = file("profiles.json") else { return Vec::new() };
+    let text = fs::read_to_string(&p).or_else(|e| {
+        // файл закрыт старыми правами (без текущего пользователя): владелец может их поправить
+        if p.exists() {
+            lock_down(&p);
+            fs::read_to_string(&p)
+        } else {
+            Err(e)
+        }
+    });
+    text.ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
 }
 
 fn write_profiles(list: &[Stored]) -> Result<(), String> {
@@ -938,9 +980,11 @@ fn connect_blocking(id: &str) -> Result<(), String> {
     };
     let rdir = run_dir()?;
     fs::create_dir_all(&rdir).map_err(|e| e.to_string())?;
+    lock_down(&rdir);
     let conf = rdir.join("config.json");
     fs::write(&conf, serde_json::to_string_pretty(&build_config(&node, &addr, &cfg, tun)).map_err(|e| e.to_string())?).map_err(|e| format!("Не удалось записать конфиг: {e}"))?;
     lock_down(&rdir);
+    lock_down(&conf);
     let dir = exe.parent().map(|p| p.to_path_buf()).unwrap_or_default();
 
     // Проверка конфига до запуска: понятная ошибка вместо молчаливого вылета
@@ -1587,6 +1631,16 @@ pub async fn vless_sub_remove(id: String) -> Result<Info, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn lock_args_include_user() {
+        let a = super::lock_args(Some("S-1-5-21-1-2-3-1001"), true);
+        assert!(a.contains(&"*S-1-5-21-1-2-3-1001:(OI)(CI)F".to_string()));
+        assert!(a.contains(&"*S-1-5-18:(OI)(CI)F".to_string()));
+        assert!(super::lock_args(None, false).contains(&"*S-1-5-32-544:F".to_string()));
+        assert_eq!(super::sid_from_csv("\"pc\\user\",\"S-1-5-21-1-2-3-1001\"\r\n").as_deref(), Some("S-1-5-21-1-2-3-1001"));
+        assert_eq!(super::sid_from_csv("garbage"), None);
+    }
+
     use super::*;
 
     const UUID: &str = "11111111-2222-3333-4444-555555555555";

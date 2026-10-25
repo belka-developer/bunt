@@ -480,6 +480,11 @@ body.app .view { height: 100vh; overflow-y: auto; }
 .uline { display: flex; justify-content: space-between; gap: 4px 14px; flex-wrap: wrap; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
 .uline b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
 .sg-note { margin-top: 8px; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; white-space: pre-line; }
+.sg-note.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sg-more { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; padding: 0; background: none; border: 0; color: var(--accent, #6aa7ff); font: inherit; font-size: 12.5px; cursor: pointer; }
+.sg-more:hover { text-decoration: underline; }
+.sg-more .ic { width: 14px; height: 14px; transform: rotate(90deg); transition: transform .15s; }
+.sg-more[aria-expanded="true"] .ic { transform: rotate(-90deg); }
 .sgrp .srvs { margin-top: 12px; }
 .vcard { cursor: pointer; }
 .vcard .sf { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }

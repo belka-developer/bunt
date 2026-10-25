@@ -50,7 +50,7 @@
     telegram: { port: '1443', link: '' },
     fc: { token_in: '', bypass_method: 'sni-spoofing-yandex-26-4', strategy: 'rolling-tunnel', sni: 'google.com', mtu: '1420', preferred_server: '', tun_name: 'FPTN', tun_ip: '10.0.0.1', exclude_networks: '10.0.0.0/8,192.168.0.0/16', include_networks: '', split: false, split_mode: 'exclude', split_domains: '', adblock: true, blacklist: '', auto_gateway: true, remove_adapter: true, autostart: false },
     fptn: { tokenSet: false, hint: '', servers: [], ping: {}, pinging: '', pingAt: 0, tokenError: '', adapter: { exists: false, status: '', description: '' }, dirty: false, busy: false, repairMsg: '', logOpen: false, log: '' },
-    v: { profiles: [], config: { active: '', mode: 'tun', socks_port: 10808, http_port: 10809, default_action: 'proxy', bypass_lan: true, dns: ['1.1.1.1', '8.8.8.8'], rules: [], subs: [], sub_auto: true, autoconnect: false, keep_on_exit: false }, running: false, tun: false, dirty: false, adapter: false, busy: false, ping: {}, pinging: {}, pingAt: 0, open: {}, refreshing: '', repairMsg: '', logOpen: false, log: '', view: '', viewName: '', rule: { kind: 'app', value: '', action: 'proxy' }, socks: '10808', http: '10809', dns_text: '1.1.1.1, 8.8.8.8', loaded: false },
+    v: { profiles: [], config: { active: '', mode: 'tun', socks_port: 10808, http_port: 10809, default_action: 'proxy', bypass_lan: true, dns: ['1.1.1.1', '8.8.8.8'], rules: [], subs: [], sub_auto: true, autoconnect: false, keep_on_exit: false }, running: false, tun: false, dirty: false, adapter: false, busy: false, ping: {}, pinging: {}, pingAt: 0, open: {}, noteOpen: {}, refreshing: '', repairMsg: '', logOpen: false, log: '', view: '', viewName: '', rule: { kind: 'app', value: '', action: 'proxy' }, socks: '10808', http: '10809', dns_text: '1.1.1.1, 8.8.8.8', loaded: false },
     dn: { presets: [], adapters: [], active: '', has_snapshot: false, config: { last: '', custom: ['', ''], ipv6: true, doh: false }, vpn: false, doh_supported: false, busy: false, loaded: false, off: [], ping: {}, pinging: false, c1: '', c2: '', msg: '' },
     w: { profiles: [], config: { active: '', autoconnect: false, keep_on_exit: false, split_default: true }, running: false, tunnel: '', dirty: false, adapter: { exists: false, status: '', description: '' }, stats: { handshake_ago: null, rx: 0, tx: 0 }, busy: false, repairMsg: '', logOpen: false, log: '', paste: false, imp_name: 'wg0', imp_text: '', view: '', viewName: '' },
     tgc: { autostart: false, host: '127.0.0.1', port: '1443', secret: '', dc_ip: '2:149.154.167.220\n4:149.154.167.220', verbose: false, buf_kb: '256', pool_size: '4', log_max_mb: '5', log_backups: '1', cfproxy: true, h2: true, cf_domain_on: false, cf_domain: '', cf_worker_on: false, cf_worker: '', force_test_dc: false, no_secure: false, fake_tls_domain: '' },
@@ -101,7 +101,7 @@
     S.v.config.active = 'p1';
     var nowS = Math.floor(Date.now() / 1000), GB = 1073741824;
     S.v.config.subs = [
-      { id: 's1', name: 'Быстрый VPN', url: 'https://sub.example.net/abc', updated: nowS - 5400, count: 4, upload: 6 * GB, download: 71 * GB, total: 100 * GB, expire: nowS + 24 * 86400, has_usage: true, web: 'https://example.net/cabinet', support: 'https://t.me/example', announce: '', interval: 24 },
+      { id: 's1', name: 'Быстрый VPN', url: 'https://sub.example.net/abc', updated: nowS - 5400, count: 4, upload: 6 * GB, download: 71 * GB, total: 100 * GB, expire: nowS + 24 * 86400, has_usage: true, web: 'https://example.net/cabinet', support: 'https://t.me/example', announce: 'Уважаемые клиенты! Сервера в Германии временно недоступны из-за технических работ у провайдера. Используйте узлы в Нидерландах и Финляндии. Подробности и новости читайте в нашем канале поддержки.', interval: 24 },
       { id: 's2', name: 'Резервная подписка', url: 'https://sub.example.org/xyz', updated: nowS - 86400, count: 2, upload: 2 * GB, download: 19 * GB, total: 0, expire: 0, has_usage: true, seen: '', web: '', support: '', announce: 'Безлимит до конца месяца', interval: 0 }
     ];
     S.fptn.servers = [['Finland', 'fi'], ['Germany', 'de'], ['Netherlands', 'nl'], ['Sweden', 'se'], ['Kazakhstan', 'kz'], ['Server 6', '']].map(function (x, i) { return { name: x[0], label: x[0], code: x[1], host: '203.0.113.' + (10 + i), port: 443 }; });
@@ -1503,6 +1503,13 @@
     if (id in v.open) return v.open[id];
     return v.config.subs.length < 2 || v.profiles.some(function (p) { return p.sub === id && p.id === v.config.active; });
   }
+  function noteHtml(s) {
+    if (!s.announce) return '';
+    var long = s.announce.length > 110 || s.announce.split('\n').length > 2, on = !!S.v.noteOpen[s.id];
+    return '<div class="sg-note' + (long && !on ? ' clamp' : '') + '">' + esc(s.announce) + '</div>' +
+      (long ? '<button class="sg-more" data-act="vNote" data-arg="' + esc(s.id) + '" aria-expanded="' + on + '">' + (on ? 'Свернуть' : 'Показать полностью') + '<svg class="ic"><use href="#i-chev"/></svg></button>' : '');
+  }
+  function vNote(id) { S.v.noteOpen[id] = !S.v.noteOpen[id]; renderVless(); }
   function vSubOpen(arg) {
     var p = String(arg).split(':');
     if (!inTauri) return;
@@ -1566,7 +1573,7 @@
         '<button class="btn sm" data-act="vSubRefresh" data-arg="' + esc(s.id) + '"' + (v.busy ? ' disabled' : '') + '>' + (re ? 'Обновляем…' : 'Обновить') + '</button>' +
         '<button class="btn sm ghost" data-act="vSubRemove" data-arg="' + esc(s.id) + '" aria-label="Удалить подписку ' + esc(s.name) + '" title="Удалить подписку">' + ico('x') + '</button></span></div>' +
         '<div class="sg-meta">Обновлена ' + esc(fmt(s.updated)) + (s.interval ? ' · сервис просит обновлять раз в ' + s.interval + ' ч' : '') + '</div>' +
-        usageHtml(s) + (s.announce ? '<div class="sg-note">' + esc(s.announce) + '</div>' : '') +
+        usageHtml(s) + noteHtml(s) +
         (open ? (list.length ? '<div class="strats srvs">' + list.map(function (p) { return vCard(p, true); }).join('') + '</div>' : '<div class="sg-note">В подписке нет серверов.</div>') : '') + '</section>';
     });
     var own = v.profiles.filter(function (p) { return !p.sub; });
@@ -2301,7 +2308,7 @@
       }).catch(function (e) { toast(String(e).slice(0, 200), 'warn'); });
     },
     copyTg: function () { copyText($('#tgLink').value, 'Ссылка скопирована'); },
-    vImport: vImport, vPing: function () { vPingAll(false); }, vToggle: vToggle, vSubOpen: vSubOpen, vRepair: vRepair, vLog: vLog, vQuick: vQuick, vProcs: vProcs, vRuleAdd: vRuleAdd,
+    vImport: vImport, vPing: function () { vPingAll(false); }, vToggle: vToggle, vSubOpen: vSubOpen, vNote: vNote, vRepair: vRepair, vLog: vLog, vQuick: vQuick, vProcs: vProcs, vRuleAdd: vRuleAdd,
     vPick: function (a) { vPick(a); }, vDel: function (a) { vDel(a); }, vDefault: function (a) { vDefault(a); }, vMode: function (a) { vMode(a); },
     vRuleAct: function (a) { vRuleAct(a); }, vRuleDel: function (a) { vRuleDel(a); }, vPickProc: function (a) { vPickProc(a); },
     vSubAdd: vSubAdd, vSubRefresh: function (a) { vSubRefresh(a); }, vSubRemove: function (a) { vSubRemove(a); },
