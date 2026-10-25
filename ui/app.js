@@ -116,7 +116,7 @@
     el.className = 'toast' + (kind ? ' ' + kind : '');
     el.textContent = msg;
     $('#toasts').appendChild(el);
-    setTimeout(function () { el.remove(); }, 3400);
+    setTimeout(function () { el.remove(); }, 3400 + Math.min(String(msg).length, 700) * 20);
   }
   function addLog(e) { e.t = hms(); S.logs.push(e); if (S.logs.length > 80) S.logs.shift(); renderLog(); }
 
@@ -1408,7 +1408,7 @@
     v.socks = String(v.config.socks_port); v.http = String(v.config.http_port); v.dns_text = (v.config.dns || []).join(', ');
     v.loaded = true;
   }
-  function vErr(err) { toast(String(err).slice(0, 240), 'warn'); }
+  function vErr(err) { toast(String(err).slice(0, 700), 'warn'); }
   function vReload() { return inTauri ? T.core.invoke('vless_status').then(applyV).catch(function () {}) : Promise.resolve(); }
   function vSave() {
     var v = S.v;
@@ -1659,7 +1659,7 @@
     p.catch(function (err) {
       S.on.vless = false;
       addLog({ svc: SVC.vless.name, m: 'Ошибка: ' + err });
-      if (!quiet || on) toast(String(err).slice(0, 240), 'warn');
+      if (!quiet || on) toast(String(err).slice(0, 700), 'warn');
       vReload().then(renderAll);
     }).then(function () { v.busy = false; if (v.logOpen) T.core.invoke('vless_log').then(function (t) { v.log = t; renderAll(); }).catch(function () {}); renderAll(); });
   }

@@ -889,7 +889,7 @@ pub(crate) fn last_error(text: &str) -> String {
             let t = l.to_lowercase();
             t.contains("failed") || t.contains("error") || t.contains("panic") || t.contains("invalid")
         })
-        .map(|l| l.trim().chars().take(300).collect())
+        .map(|l| l.trim().chars().take(700).collect())
         .unwrap_or_default()
 }
 
@@ -1321,8 +1321,8 @@ fn parse_userinfo(s: &str) -> Option<(u64, u64, u64, u64)> {
     any.then_some((up, down, total, exp))
 }
 
-/// Текст из заголовка: `base64:…` раскодируется, остальное остаётся как есть.
-fn header_text(v: &str) -> String {
+/// Значение заголовка: `base64:…` раскодируется, остальное остаётся как есть.
+fn decode_header(v: &str, percent: bool) -> String {
     use base64::Engine;
     let t = v.trim();
     if let Some(b) = t.strip_prefix("base64:") {
@@ -1330,13 +1330,25 @@ fn header_text(v: &str) -> String {
         for eng in [&base64::engine::general_purpose::STANDARD_NO_PAD, &base64::engine::general_purpose::URL_SAFE_NO_PAD] {
             if let Ok(raw) = eng.decode(b.as_bytes()) {
                 if let Ok(s) = String::from_utf8(raw) {
-                    return clean_name(&s);
+                    return s;
                 }
             }
         }
         return String::new();
     }
-    clean_name(&percent_decode(t))
+    if percent { percent_decode(t) } else { t.to_string() }
+}
+
+/// Короткий текст из заголовка (название): одна строка, до 60 символов.
+fn header_text(v: &str) -> String {
+    clean_name(&decode_header(v, true))
+}
+
+/// Объявление сервиса: показывается целиком, с переносами строк, до 1000 символов.
+fn header_note(v: &str) -> String {
+    let s = decode_header(v, false).replace("\r\n", "\n");
+    let t: String = s.chars().filter(|c| *c == '\n' || !c.is_control()).collect();
+    t.trim().chars().take(1000).collect()
 }
 
 fn header_url(v: &str) -> String {
@@ -1357,7 +1369,7 @@ pub(crate) fn parse_meta(get: impl Fn(&str) -> Option<String>) -> SubMeta {
     m.title = get("profile-title").map(|v| header_text(&v)).unwrap_or_default();
     m.web = get("profile-web-page-url").map(|v| header_url(&v)).unwrap_or_default();
     m.support = get("support-url").map(|v| header_url(&v)).unwrap_or_default();
-    m.announce = get("announce").map(|v| header_text(&v)).unwrap_or_default();
+    m.announce = get("announce").map(|v| header_note(&v)).unwrap_or_default();
     m.interval = get("profile-update-interval").and_then(|v| v.trim().parse::<u64>().ok()).filter(|h| (1..=720).contains(h)).unwrap_or(0);
     m
 }
@@ -1592,12 +1604,17 @@ mod tests {
         h.insert("profile-web-page-url", "https://panel.example.com/sub/abc");
         h.insert("support-url", "javascript:alert(1)");
         h.insert("profile-update-interval", "12");
+        h.insert("announce", "Если не работает - обновите и проверьте пинг. Если не поможет, напишите в поддержку и приложите скриншот.");
         let m = parse_meta(|k| h.get(k).map(|v| v.to_string()));
         assert_eq!((m.upload, m.download, m.total, m.expire, m.has_usage), (455727941, 6174315083, 1073741824000, 2218532293, true));
         assert_eq!(m.title, "Тест");
         assert_eq!(m.web, "https://panel.example.com/sub/abc");
         assert_eq!(m.support, "");
         assert_eq!(m.interval, 12);
+        // объявление длиннее названия и не должно обрезаться на 60 символах
+        assert!(m.announce.chars().count() > 60 && m.announce.ends_with("скриншот."));
+        assert_eq!(header_note("a\r\nb\u{7}c"), "a\nbc");
+        assert_eq!(header_note(&format!("base64:{}", "0J/RgNC40LLQtdGCCtC80LjRgA==")), "Привет\nмир");
         let none = parse_meta(|_| None);
         assert!(!none.has_usage && none.total == 0 && none.title.is_empty());
         assert_eq!(parse_userinfo("total=0"), Some((0, 0, 0, 0)));
