@@ -11,6 +11,7 @@ mod fptn;
 mod geo;
 mod wg;
 mod dns;
+mod proxy;
 mod vless;
 mod vcredist;
 mod telegram;
@@ -134,6 +135,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let discord = MenuItem::with_id(app, "go:discord", "Запрет Discord и YouTube", true, None::<&str>)?;
     let telegram = MenuItem::with_id(app, "go:telegram", "Запрет Telegram", true, None::<&str>)?;
     let vless = MenuItem::with_id(app, "go:vless", "VLESS", true, None::<&str>)?;
+    let proxy = MenuItem::with_id(app, "go:proxy", "Proxy", true, None::<&str>)?;
     let dns = MenuItem::with_id(app, "go:dns", "DNS", true, None::<&str>)?;
     let fptn = MenuItem::with_id(app, "go:fptn", "FPTN", true, None::<&str>)?;
     let wg = MenuItem::with_id(app, "go:wg", "WireGuard / AmneziaWG", true, None::<&str>)?;
@@ -145,7 +147,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let sep2 = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(
         app,
-        &[&open, &sep1, &discord, &telegram, &vless, &wg, &dns, &fptn, &sep2, &updates, &settings, &quit],
+        &[&open, &sep1, &discord, &telegram, &vless, &proxy, &wg, &dns, &fptn, &sep2, &updates, &settings, &quit],
     )?;
     // Без прав администратора запрет работать не будет: в меню трея появляется пункт, который это исправляет
     if !settings::is_admin_sync() {
@@ -319,7 +321,17 @@ pub fn run() {
             vless::vless_sub_add,
             vless::vless_sub_refresh,
             vless::vless_sub_remove,
-            vless::proxy_add
+            proxy::proxy_status,
+            proxy::proxy_connect,
+            proxy::proxy_disconnect,
+            proxy::proxy_repair,
+            proxy::proxy_add,
+            proxy::proxy_delete,
+            proxy::proxy_select,
+            proxy::proxy_config_set,
+            proxy::proxy_profile_view,
+            proxy::proxy_ping_one,
+            proxy::proxy_log
         ])
         .on_window_event(|window, event| {
             if window.label() != "main" {
@@ -362,6 +374,7 @@ pub fn run() {
                 fptn::shutdown();
                 wg::shutdown();
                 vless::shutdown();
+                proxy::shutdown();
             }
         });
 }

@@ -570,8 +570,8 @@ fn connect_blocking() -> Result<(), String> {
     if crate::wg::is_running() {
         return Err("WireGuard / AmneziaWG сейчас включён. Отключите его, прежде чем включать FPTN: два VPN сразу ломают маршруты.".into());
     }
-    if crate::vless::is_running() {
-        return Err("VLESS сейчас включён. Отключите его, прежде чем включать FPTN: два VPN сразу ломают маршруты.".into());
+    if crate::vless::is_running() || crate::proxy::is_running() {
+        return Err("VLESS или Proxy сейчас включён. Отключите его, прежде чем включать FPTN: два VPN сразу ломают маршруты.".into());
     }
     let dir = crate::modules::active_dir("fptn")?;
     let exe = dir.join(CLI);

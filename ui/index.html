@@ -372,48 +372,81 @@
             </div>
           </section>
 
-          <!-- Proxy: обычные http, https и socks5 на том же ядре Xray -->
+          <!-- Proxy: обычные SOCKS5, HTTP и HTTPS на своём экземпляре Xray -->
           <section data-page="proxy" hidden>
             <div class="page-head">
               <div>
                 <h1>Proxy</h1>
-                <p class="sub">Обычные прокси: SOCKS5, HTTP и HTTPS, с логином и паролем или без. Работают на ядре Xray из вкладки VLESS, режим и правила общие.</p>
+                <p class="sub">Обычные прокси: SOCKS5, HTTP и HTTPS, с логином и паролем или без. Работает отдельно от VLESS: свои прокси, настройки и подключение.</p>
               </div>
-              <div class="head-sw"><span class="state" id="pxState"></span></div>
+              <div class="head-sw"><span class="state" data-state="proxy"></span><button class="sw" role="switch" data-svc="proxy" aria-label="Proxy"></button></div>
             </div>
-            <div class="panel install" id="pxNeed" hidden>
-              <h3>Нужно ядро Xray</h3>
-              <p class="sub">Прокси подключаются через то же ядро, что и VLESS. Установите его во вкладке VLESS, это займёт около минуты.</p>
-              <div><button class="btn primary" data-act="goVless">Открыть VLESS</button></div>
+            <div class="panel install" id="inst-proxy" hidden>
+              <span class="badge b-proxy" id="instBadge-proxy"></span>
+              <h3>Не установлено</h3>
+              <p class="sub">Бунт скачает ядро Xray-core, проверит хеш и распакует его в папку <span class="mono">modules</span>, ничего не устанавливая в систему. Для режима TUN рядом кладётся подписанный драйвер wintun.</p>
+              <div class="inst-meta"><span>Источник: <b class="mono">XTLS/Xray-core</b></span><span>Версия на GitHub: <b class="mono" data-latest="proxy">…</b></span></div>
+              <div class="note mono" data-modpath hidden></div>
+              <div id="instAct-proxy"></div>
             </div>
             <div data-body="proxy">
+            <div id="pDirty" class="sec-fix" hidden><span>Прошлая сессия не была закрыта. Маршруты, DNS или системный прокси могли остаться изменёнными.</span><button class="btn sm primary" data-act="pRepair">Починить сеть</button></div>
             <div class="cols">
               <div class="stack">
                 <div class="panel">
-                  <div class="panel-head"><h3>Прокси</h3><button class="btn sm" data-act="vPing" id="pxPingBtn" title="Проверить время ответа всех прокси"><svg class="ic"><use href="#i-refresh"/></svg>Пинг</button></div>
-                  <div class="field-row"><input class="field mono" id="pxIn" placeholder="socks5://user:pass@host:1080" aria-label="Адрес прокси" spellcheck="false"><button class="btn primary" data-act="pxAdd"><svg class="ic"><use href="#i-plus"/></svg>Добавить</button></div>
-                  <p class="note mt-s" id="pxMsg">Можно вставить несколько адресов, по одному в строке. Строка вида хост:порт считается HTTP-прокси.</p>
-                  <div id="pxList"></div>
+                  <div class="panel-head"><h3>Прокси</h3><button class="btn sm" data-act="pPing" id="pPingBtn" title="Проверить время ответа всех прокси"><svg class="ic"><use href="#i-refresh"/></svg>Пинг</button></div>
+                  <div class="field-row"><input class="field mono" id="pIn" placeholder="socks5://user:pass@host:1080" aria-label="Адрес прокси" spellcheck="false"><button class="btn primary" data-act="pAdd"><svg class="ic"><use href="#i-plus"/></svg>Добавить</button></div>
+                  <p class="note mt-s" id="pMsg">Можно вставить несколько адресов, по одному в строке. Строка вида хост:порт считается HTTP-прокси. SOCKS4 ядро Xray не поддерживает.</p>
+                  <div id="pList"></div>
+                </div>
+                <div class="panel">
+                  <h3>Добавить вручную</h3>
+                  <div class="row"><span class="lbl">Тип</span><select class="field" data-bind="p.form.type" aria-label="Тип прокси" style="width:150px"><option value="socks5">SOCKS5</option><option value="http">HTTP</option><option value="https">HTTPS</option></select></div>
+                  <div class="row"><span class="lbl">Адрес</span><input class="field mono" data-bind="p.form.host" spellcheck="false" aria-label="Адрес прокси" placeholder="proxy.example.com" style="width:200px"></div>
+                  <div class="row"><span class="lbl">Порт</span><input class="field mono" data-bind="p.form.port" inputmode="numeric" aria-label="Порт" placeholder="1080" style="width:100px"></div>
+                  <div class="row"><span class="lbl">Логин<small>Если нужен</small></span><input class="field mono" data-bind="p.form.user" spellcheck="false" autocomplete="off" aria-label="Логин" style="width:200px"></div>
+                  <div class="row"><span class="lbl">Пароль<small>Хранится только на этом компьютере</small></span><input class="field mono" type="password" data-bind="p.form.pass" autocomplete="off" aria-label="Пароль" style="width:200px"></div>
+                  <div class="row"><span class="lbl">Название<small>Необязательно</small></span><input class="field" data-bind="p.form.name" spellcheck="false" aria-label="Название" style="width:200px"></div>
+                  <div class="row" style="justify-content:flex-end"><button class="btn primary" data-act="pForm"><svg class="ic"><use href="#i-plus"/></svg>Добавить</button></div>
                 </div>
               </div>
               <div class="stack">
                 <div class="panel">
-                  <h3>Подключение</h3>
-                  <div class="row"><span class="lbl">Выбранный прокси</span><span class="val" id="pxCur">Не выбран</span></div>
-                  <div class="row"><span class="lbl">Режим<small id="pxModeNote"></small></span><span class="val" id="pxMode">–</span></div>
-                  <div class="row" style="justify-content:flex-start;gap:8px;flex-wrap:wrap"><button class="btn primary" data-act="pxToggle" id="pxToggle">Подключить</button><button class="btn" data-act="goVless">Режим и правила</button></div>
-                  <p class="note mt-s">TUN, порты, правила для приложений и сайтов настраиваются во вкладке VLESS. Одновременно работает одно подключение: либо сервер VLESS, либо прокси.</p>
+                  <h3>Режим</h3>
+                  <div class="row"><span class="lbl">Как пускать трафик</span>
+                    <span class="seg" role="group" aria-label="Режим"><button data-act="pMode" data-arg="proxy" id="pModeProxy">Прокси</button><button data-act="pMode" data-arg="tun" id="pModeTun">TUN</button></span></div>
+                  <p class="note" id="pModeNote"></p>
+                  <div id="pPorts">
+                    <div class="row"><span class="lbl">Порт SOCKS<small>Локальный адрес 127.0.0.1</small></span><input class="field mono" data-bind="p.socks" inputmode="numeric" aria-label="Порт SOCKS" style="width:100px"></div>
+                    <div class="row"><span class="lbl">Порт HTTP<small>Его получает системный прокси Windows</small></span><input class="field mono" data-bind="p.http" inputmode="numeric" aria-label="Порт HTTP" style="width:100px"></div>
+                  </div>
+                  <div id="pDnsRow" class="row"><span class="lbl">DNS в режиме TUN<small>Через запятую</small></span><input class="field mono" data-bind="p.dns_text" spellcheck="false" aria-label="DNS в режиме TUN" style="width:190px"></div>
+                </div>
+                <div class="panel" id="pStatsBox" hidden>
+                  <h3>Соединение</h3>
+                  <div class="row"><span class="lbl">Режим</span><span class="val" id="pRunMode">–</span></div>
+                  <div class="row"><span class="lbl">Прокси</span><span class="val" id="pRunSrv">–</span></div>
+                  <div class="row"><span class="lbl">Адаптер TUN</span><span class="val" id="pRunAd">–</span></div>
                 </div>
                 <div class="panel">
-                  <h3>Добавить вручную</h3>
-                  <div class="row"><span class="lbl">Тип</span><select class="field" data-bind="v.px.type" aria-label="Тип прокси" style="width:150px"><option value="socks5">SOCKS5</option><option value="http">HTTP</option><option value="https">HTTPS</option></select></div>
-                  <div class="row"><span class="lbl">Адрес</span><input class="field mono" data-bind="v.px.host" spellcheck="false" aria-label="Адрес прокси" placeholder="proxy.example.com" style="width:200px"></div>
-                  <div class="row"><span class="lbl">Порт</span><input class="field mono" data-bind="v.px.port" inputmode="numeric" aria-label="Порт" placeholder="1080" style="width:100px"></div>
-                  <div class="row"><span class="lbl">Логин<small>Если нужен</small></span><input class="field mono" data-bind="v.px.user" spellcheck="false" autocomplete="off" aria-label="Логин" style="width:200px"></div>
-                  <div class="row"><span class="lbl">Пароль<small>Хранится только на этом компьютере</small></span><input class="field mono" type="password" data-bind="v.px.pass" autocomplete="off" aria-label="Пароль" style="width:200px"></div>
-                  <div class="row"><span class="lbl">Название<small>Необязательно</small></span><input class="field" data-bind="v.px.name" spellcheck="false" aria-label="Название" style="width:200px"></div>
-                  <div class="row" style="justify-content:flex-end"><button class="btn primary" data-act="pxForm"><svg class="ic"><use href="#i-plus"/></svg>Добавить</button></div>
-                  <p class="note mt-s">SOCKS4 ядро Xray не поддерживает: нужен SOCKS5, HTTP или HTTPS.</p>
+                  <h3>Защита сети</h3>
+                  <p class="note">Перед подключением Бунт запоминает шлюз и DNS физических адаптеров и прежний системный прокси. После отключения или сбоя он убирает следы и всё возвращает. Локальная сеть идёт напрямую.</p>
+                  <div class="row"><div class="lbl">Починить сеть<small>Убрать следы вручную, пока Proxy отключён</small></div><button class="btn sm" data-act="pRepair">Починить</button></div>
+                  <p class="note mt-s" id="pRepairMsg" hidden></p>
+                </div>
+                <div class="panel">
+                  <h3>Дополнительно</h3>
+                  <div class="row"><div class="lbl">Локальную сеть напрямую<small>Адреса 192.168.x.x, 10.x.x.x и другие частные идут мимо прокси</small></div><button class="sw" role="switch" data-sw="p.config.bypass_lan" aria-label="Локальную сеть напрямую"></button></div>
+                  <div class="row"><div class="lbl">Подключать при запуске Бунта<small>Выбранный прокси. Включите вместе с автозапуском Бунта в «Настройках»</small></div><button class="sw" role="switch" data-sw="p.config.autoconnect" aria-label="Подключать при запуске"></button></div>
+                  <div class="row"><div class="lbl">Не отключать при выходе из Бунта<small>Ядро останется работать, пока вы не отключите его в Бунте</small></div><button class="sw" role="switch" data-sw="p.config.keep_on_exit" aria-label="Не отключать при выходе"></button></div>
+                  <div class="row"><span class="lbl">Журнал</span><button class="btn sm" data-act="pLog">Показать</button></div>
+                  <pre class="logbox" id="pLog" hidden></pre>
+                </div>
+                <div class="panel">
+                  <h3>Компонент</h3>
+                  <div class="row"><span class="lbl">Версия ядра</span><span class="val" id="pVer">–</span></div>
+                  <div class="row"><span class="lbl">Источник</span><span class="val">XTLS/Xray-core</span></div>
+                  <div class="row"><span class="lbl">Режим</span><span class="val">Скрытый процесс, без окна и трея</span></div>
                 </div>
               </div>
             </div>

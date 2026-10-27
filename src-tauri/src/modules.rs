@@ -26,7 +26,7 @@ pub(crate) fn source(id: &str) -> Result<(&'static str, &'static str), String> {
         "telegram" => Ok(("Flowseal", "tg-ws-proxy")),
         "fptn" => Ok(("fptn-project", "fptn")),
         "wg" => Ok(("amnezia-vpn", "amneziawg-windows-client")),
-        "vless" => Ok(("XTLS", "Xray-core")),
+        "vless" | "proxy" => Ok(("XTLS", "Xray-core")),
         _ => Err(format!("Неизвестный компонент: {id}")),
     }
 }
@@ -252,7 +252,7 @@ pub fn modules_dir() -> Result<String, String> {
 #[tauri::command]
 pub async fn latest_component(id: String) -> Result<Latest, String> {
     let rel = fetch_release(&id).await?;
-    let asset = if id == "wg" { wg_asset(&rel) } else if id == "vless" { xray_asset(&rel) } else { rel.assets.iter().find(|a| a.name.to_lowercase().ends_with(".zip")) };
+    let asset = if id == "wg" { wg_asset(&rel) } else if id == "vless" || id == "proxy" { xray_asset(&rel) } else { rel.assets.iter().find(|a| a.name.to_lowercase().ends_with(".zip")) };
     Ok(Latest {
         version: clean_version(&rel.tag_name),
         size: asset.and_then(|a| a.size),
@@ -310,8 +310,8 @@ pub async fn install_component(
     if id == "wg" {
         return install_wg(&app, &rel, &version, &root, &target).await;
     }
-    if id == "vless" {
-        return install_vless(&app, &rel, &version, &root, &target).await;
+    if id == "vless" || id == "proxy" {
+        return install_xray(&app, &id, &rel, &version, &root, &target).await;
     }
     let (url, digest) = pick_archive(&rel)?;
     let staging = root.join(".staging");
@@ -417,9 +417,9 @@ pub async fn uninstall_component(state: tauri::State<'_, crate::zapret::Zapret>,
     } else if id == "wg" {
         // Отключить туннель, убрать за ним сеть и службу, потом стереть файлы вместе с профилями
         let _ = tauri::async_runtime::spawn_blocking(crate::wg::stop_all).await;
-    } else if id == "vless" {
+    } else if id == "vless" || id == "proxy" {
         // Остановить ядро, вернуть системный прокси, сеть и DNS, потом стереть файлы вместе с профилями
-        let _ = tauri::async_runtime::spawn_blocking(crate::vless::stop_all).await;
+        let _ = tauri::async_runtime::spawn_blocking(if id == "proxy" { crate::proxy::stop_all } else { crate::vless::stop_all }).await;
     } else if id == "telegram" {
         crate::telegram::stop();
         crate::telegram::set_enabled(false);
@@ -850,9 +850,9 @@ fn xray_zip_name() -> &'static str {
 const WINTUN_URL: &str = "https://www.wintun.net/builds/wintun-0.14.1.zip";
 
 /// Xray-core: один exe плюс базы geoip и geosite. Для режима TUN рядом кладётся подписанный wintun.dll.
-async fn install_vless(app: &AppHandle, rel: &Release, version: &str, root: &Path, target: &Path) -> Result<String, String> {
+async fn install_xray(app: &AppHandle, id: &str, rel: &Release, version: &str, root: &Path, target: &Path) -> Result<String, String> {
     if !cfg!(windows) {
-        return Err("VLESS ставится только в Windows.".into());
+        return Err("Ядро Xray ставится только в Windows.".into());
     }
     let (url, digest) = match xray_asset(rel) {
         Some(a) => (a.browser_download_url.clone(), a.digest.clone()),
@@ -868,7 +868,7 @@ async fn install_vless(app: &AppHandle, rel: &Release, version: &str, root: &Pat
         let mut last = String::new();
         let mut ok = false;
         for attempt in 1..=3u64 {
-            match download_file(app, "vless", &url, digest.as_deref(), &zip, 55, "Скачиваем ядро Xray-core").await {
+            match download_file(app, id, &url, digest.as_deref(), &zip, 55, "Скачиваем ядро Xray-core").await {
                 Ok(()) => {
                     ok = true;
                     break;
@@ -884,15 +884,15 @@ async fn install_vless(app: &AppHandle, rel: &Release, version: &str, root: &Pat
         if !ok {
             return Err(last);
         }
-        progress(app, "vless", 58, 100, "Распаковываем ядро");
+        progress(app, id, 58, 100, "Распаковываем ядро");
         let unpacked = staging.join("xray");
         extract_zip(&zip, &unpacked)?;
         let src = find_file_dir(&unpacked, crate::vless::EXE).ok_or("В архиве не нашёлся xray.exe")?;
 
         // wintun.dll нужен только для режима TUN: если скачать не вышло, пробуем взять его у клиента AmneziaWG
-        progress(app, "vless", 62, 100, "Скачиваем драйвер wintun");
+        progress(app, id, 62, 100, "Скачиваем драйвер wintun");
         let wintun = staging.join("wintun.dll");
-        let got = match download_wintun(app, &staging).await {
+        let got = match download_wintun(app, id, &staging).await {
             Ok(p) => {
                 let _ = fs::copy(&p, &wintun);
                 true
@@ -903,8 +903,8 @@ async fn install_vless(app: &AppHandle, rel: &Release, version: &str, root: &Pat
                 .map(|d| fs::copy(d.join("wintun.dll"), &wintun).is_ok())
                 .unwrap_or(false),
         };
-        progress(app, "vless", 80, 100, "Останавливаем VLESS");
-        let _ = tauri::async_runtime::spawn_blocking(crate::vless::stop_all).await;
+        progress(app, id, 80, 100, if id == "proxy" { "Останавливаем Proxy" } else { "Останавливаем VLESS" });
+        let _ = tauri::async_runtime::spawn_blocking(if id == "proxy" { crate::proxy::stop_all } else { crate::vless::stop_all }).await;
 
         if target.is_dir() {
             fs::remove_dir_all(target).map_err(|e| format!("Не удалось удалить старые файлы: {e}"))?;
@@ -922,7 +922,7 @@ async fn install_vless(app: &AppHandle, rel: &Release, version: &str, root: &Pat
             let _ = fs::remove_dir_all(target);
             return Err("После распаковки не нашёлся xray.exe".into());
         }
-        progress(app, "vless", 95, 100, "Записываем хеши файлов");
+        progress(app, id, 95, 100, "Записываем хеши файлов");
         let _ = crate::integrity::write_manifest(target);
         Ok(())
     }
@@ -931,9 +931,9 @@ async fn install_vless(app: &AppHandle, rel: &Release, version: &str, root: &Pat
     result?;
 
     let mut st = read_state(root);
-    st.insert("vless".into(), version.to_string());
+    st.insert(id.to_string(), version.to_string());
     write_state(root, &st)?;
-    if let Ok(rd) = fs::read_dir(root.join("vless")) {
+    if let Ok(rd) = fs::read_dir(root.join(id)) {
         for e in rd.flatten() {
             let n = e.file_name().to_string_lossy().to_string();
             if n != version && !crate::vless::is_service_dir(&n) {
@@ -945,9 +945,9 @@ async fn install_vless(app: &AppHandle, rel: &Release, version: &str, root: &Pat
 }
 
 /// Скачивает wintun с официального сайта и берёт dll под архитектуру. Подпись WireGuard проверяется обязательно.
-async fn download_wintun(app: &AppHandle, staging: &Path) -> Result<PathBuf, String> {
+async fn download_wintun(app: &AppHandle, id: &str, staging: &Path) -> Result<PathBuf, String> {
     let zip = staging.join("wintun.zip");
-    download_file(app, "vless", WINTUN_URL, None, &zip, 15, "Скачиваем драйвер wintun").await?;
+    download_file(app, id, WINTUN_URL, None, &zip, 15, "Скачиваем драйвер wintun").await?;
     let out = staging.join("wintun");
     extract_zip(&zip, &out)?;
     let arch = match std::env::consts::ARCH {

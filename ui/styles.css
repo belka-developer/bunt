@@ -106,6 +106,7 @@ h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.01em; text-wrap: bala
 .b-discord { background: linear-gradient(145deg, #6b77ff, #4752c4); }
 .b-telegram { background: linear-gradient(145deg, #38b6f5, #1a8ed0); }
 .b-vless { background: linear-gradient(145deg, #4aa3ff, #2a62d9); }
+.b-proxy { background: linear-gradient(145deg, #b78cff, #7a4ae0); }
 .b-wg { background: linear-gradient(145deg, #d8394d, #8f1f33); }
 .b-dns { background: linear-gradient(145deg, #2fc8a5, #1b8a74); }
 .b-fptn { background: linear-gradient(145deg, #9a6bff, #5b3ccf); }
