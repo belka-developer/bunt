@@ -395,19 +395,7 @@
               <div class="stack">
                 <div class="panel">
                   <div class="panel-head"><h3>Прокси</h3><button class="btn sm" data-act="pPing" id="pPingBtn" title="Проверить время ответа всех прокси"><svg class="ic"><use href="#i-refresh"/></svg>Пинг</button></div>
-                  <div class="field-row"><input class="field mono" id="pIn" placeholder="socks5://user:pass@host:1080" aria-label="Адрес прокси" spellcheck="false"><button class="btn primary" data-act="pAdd"><svg class="ic"><use href="#i-plus"/></svg>Добавить</button></div>
-                  <p class="note mt-s" id="pMsg">Можно вставить несколько адресов, по одному в строке. Строка вида хост:порт считается HTTP-прокси. SOCKS4 ядро Xray не поддерживает.</p>
                   <div id="pList"></div>
-                </div>
-                <div class="panel">
-                  <h3>Добавить вручную</h3>
-                  <div class="row"><span class="lbl">Тип</span><select class="field" data-bind="p.form.type" aria-label="Тип прокси" style="width:150px"><option value="socks5">SOCKS5</option><option value="http">HTTP</option><option value="https">HTTPS</option></select></div>
-                  <div class="row"><span class="lbl">Адрес</span><input class="field mono" data-bind="p.form.host" spellcheck="false" aria-label="Адрес прокси" placeholder="proxy.example.com" style="width:200px"></div>
-                  <div class="row"><span class="lbl">Порт</span><input class="field mono" data-bind="p.form.port" inputmode="numeric" aria-label="Порт" placeholder="1080" style="width:100px"></div>
-                  <div class="row"><span class="lbl">Логин<small>Если нужен</small></span><input class="field mono" data-bind="p.form.user" spellcheck="false" autocomplete="off" aria-label="Логин" style="width:200px"></div>
-                  <div class="row"><span class="lbl">Пароль<small>Хранится только на этом компьютере</small></span><input class="field mono" type="password" data-bind="p.form.pass" autocomplete="off" aria-label="Пароль" style="width:200px"></div>
-                  <div class="row"><span class="lbl">Название<small>Необязательно</small></span><input class="field" data-bind="p.form.name" spellcheck="false" aria-label="Название" style="width:200px"></div>
-                  <div class="row" style="justify-content:flex-end"><button class="btn primary" data-act="pForm"><svg class="ic"><use href="#i-plus"/></svg>Добавить</button></div>
                 </div>
               </div>
               <div class="stack">

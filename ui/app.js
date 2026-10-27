@@ -53,7 +53,7 @@
     fptn: { tokenSet: false, hint: '', servers: [], ping: {}, pinging: '', pingAt: 0, tokenError: '', adapter: { exists: false, status: '', description: '' }, dirty: false, busy: false, repairMsg: '', logOpen: false, log: '' },
     v: { profiles: [], config: { active: '', mode: 'tun', socks_port: 10808, http_port: 10809, default_action: 'proxy', bypass_lan: true, dns: ['1.1.1.1', '8.8.8.8'], rules: [], subs: [], sub_auto: true, autoconnect: false, keep_on_exit: false }, running: false, tun: false, dirty: false, adapter: false, busy: false, ping: {}, pinging: {}, pingAt: 0, open: {}, noteOpen: {}, refreshing: '', repairMsg: '', logOpen: false, log: '', view: '', viewName: '', rule: { kind: 'app', value: '', action: 'proxy' }, socks: '10808', http: '10809', dns_text: '1.1.1.1, 8.8.8.8', loaded: false },
     dn: { presets: [], adapters: [], active: '', has_snapshot: false, config: { last: '', custom: ['', ''], ipv6: true, doh: false }, vpn: false, doh_supported: false, busy: false, loaded: false, off: [], ping: {}, pinging: false, c1: '', c2: '', msg: '' },
-    p: { profiles: [], config: { active: '', mode: 'proxy', socks_port: 10818, http_port: 10819, default_action: 'proxy', bypass_lan: true, dns: ['1.1.1.1', '8.8.8.8'], rules: [], subs: [], sub_auto: false, autoconnect: false, keep_on_exit: false }, running: false, tun: false, dirty: false, adapter: false, busy: false, ping: {}, pinging: {}, pingAt: 0, repairMsg: '', logOpen: false, log: '', form: { type: 'socks5', host: '', port: '', user: '', pass: '', name: '' }, socks: '10818', http: '10819', dns_text: '1.1.1.1, 8.8.8.8', loaded: false },
+    p: { profiles: [], config: { active: '', mode: 'proxy', socks_port: 10818, http_port: 10819, default_action: 'proxy', bypass_lan: true, dns: ['1.1.1.1', '8.8.8.8'], rules: [], subs: [], sub_auto: false, autoconnect: false, keep_on_exit: false }, running: false, tun: false, dirty: false, adapter: false, busy: false, ping: {}, pinging: {}, pingAt: 0, repairMsg: '', logOpen: false, log: '', socks: '10818', http: '10819', dns_text: '1.1.1.1, 8.8.8.8', loaded: false },
     w: { profiles: [], config: { active: '', autoconnect: false, keep_on_exit: false, split_default: true }, running: false, tunnel: '', dirty: false, adapter: { exists: false, status: '', description: '' }, stats: { handshake_ago: null, rx: 0, tx: 0 }, busy: false, repairMsg: '', logOpen: false, log: '', paste: false, imp_name: 'wg0', imp_text: '', view: '', viewName: '' },
     tgc: { autostart: false, host: '127.0.0.1', port: '1443', secret: '', dc_ip: '2:149.154.167.220\n4:149.154.167.220', verbose: false, buf_kb: '256', pool_size: '4', log_max_mb: '5', log_backups: '1', cfproxy: true, h2: true, cf_domain_on: false, cf_domain: '', cf_worker_on: false, cf_worker: '', force_test_dc: false, no_secure: false, fake_tls_domain: '' },
     lists: {
@@ -1715,24 +1715,40 @@
     return T.core.invoke('proxy_config_set', { config: c }).then(applyP).catch(function (err) { pErr(err); return pReload(); }).then(renderAll);
   }
   function pApplyNote() { if (S.p.running) toast('Настройки применятся при следующем подключении.'); }
-  function pMsg(t) { var m = $('#pMsg'); if (m) m.textContent = t; }
-  function pAddText(text, input) {
-    if (!text) { pMsg('Вставьте адрес прокси, например socks5://хост:1080.'); return; }
+  function pMsg(t) { var m = $('#pmMsg'); if (m) m.textContent = t; }
+  function pAddText(text) {
+    if (!text) { pMsg('Вставьте адрес прокси или заполните поля.'); return; }
     if (!inTauri) { pMsg('Добавление прокси работает в приложении Бунт.'); return; }
     S.p.busy = true; renderAll();
     T.core.invoke('proxy_add', { text: text }).then(function (d) {
-      if (input) input.value = '';
-      applyP(d.info); pMsg(d.message); addLog({ svc: SVC.proxy.name, m: d.message, ok: true }); toast(d.message);
-    }).catch(function (err) { pMsg(String(err)); pErr(err); }).then(function () { S.p.busy = false; renderAll(); });
+      closeModal();
+      applyP(d.info); addLog({ svc: SVC.proxy.name, m: d.message, ok: true }); toast(d.message);
+    }).catch(function (err) { pMsg(String(err)); }).then(function () { S.p.busy = false; renderAll(); });
   }
-  function pAdd() { var el = $('#pIn'); pAddText(el.value.trim(), el); }
-  function pForm() {
-    var f = S.p.form, host = String(f.host || '').trim(), port = String(f.port || '').trim();
-    if (!host || !port) { pMsg('Укажите адрес и порт.'); return; }
-    var auth = f.user ? encodeURIComponent(f.user) + (f.pass ? ':' + encodeURIComponent(f.pass) : '') + '@' : '';
+  function pOpenAdd() {
+    var f = function (id, label, ph, extra) { return '<div class="row"><span class="lbl">' + label + '</span><input class="field mono" id="' + id + '" spellcheck="false" autocomplete="off" placeholder="' + ph + '" aria-label="' + label + '"' + (extra || '') + ' style="width:210px"></div>'; };
+    openModal('Добавить прокси',
+      '<div class="row"><span class="lbl">Адрес целиком<small>Можно сразу несколько, по одному в строке</small></span></div>' +
+      '<textarea class="field mono ta" id="pmLink" rows="2" style="min-height:0;height:62px" spellcheck="false" placeholder="socks5://user:pass@host:1080" aria-label="Адрес прокси"></textarea>' +
+      '<p class="note mt-s">Или заполните поля. Если адрес выше указан, поля не нужны.</p>' +
+      '<div class="row"><span class="lbl">Тип</span><select class="field" id="pmType" aria-label="Тип прокси" style="width:210px"><option value="socks5">SOCKS5</option><option value="http">HTTP</option><option value="https">HTTPS</option></select></div>' +
+      f('pmHost', 'Адрес', 'proxy.example.com') + f('pmPort', 'Порт', '1080', ' inputmode="numeric"') +
+      f('pmUser', 'Логин<small>Если нужен</small>', '') +
+      '<div class="row"><span class="lbl">Пароль<small>Хранится только на этом компьютере</small></span><input class="field mono" type="password" id="pmPass" autocomplete="off" aria-label="Пароль" style="width:210px"></div>' +
+      f('pmName', 'Название<small>Необязательно</small>', '') +
+      '<p class="note" id="pmMsg">SOCKS4 ядро Xray не поддерживает. Строка вида хост:порт считается HTTP-прокси.</p>',
+      '<button class="btn" data-act="closeModal">Отмена</button><button class="btn primary" data-act="pSubmit">Добавить</button>');
+    var l = $('#pmLink'); if (l) l.focus();
+  }
+  function pSubmit() {
+    var link = ($('#pmLink').value || '').trim();
+    if (link) { pAddText(link); return; }
+    var v = function (id) { return ($('#' + id).value || '').trim(); };
+    var host = v('pmHost'), port = v('pmPort'), user = $('#pmUser').value.trim(), pass = $('#pmPass').value;
+    if (!host || !port) { pMsg('Укажите адрес и порт или вставьте адрес целиком.'); return; }
+    var auth = user ? encodeURIComponent(user) + (pass ? ':' + encodeURIComponent(pass) : '') + '@' : '';
     var h = host.indexOf(':') >= 0 && host.charAt(0) !== '[' ? '[' + host + ']' : host;
-    pAddText(f.type + '://' + auth + h + ':' + port + (f.name ? '#' + encodeURIComponent(String(f.name).trim()) : ''), null);
-    if (inTauri) f.pass = '';
+    pAddText($('#pmType').value + '://' + auth + h + ':' + port + (v('pmName') ? '#' + encodeURIComponent(v('pmName')) : ''));
   }
   function pPick(id) {
     var p = S.p;
@@ -1848,8 +1864,8 @@
     var set = function (id, t) { var e = $(id); if (e) e.textContent = t; };
     set('#pVer', c.cur || '–');
     var el = $('#pList');
-    if (el) el.innerHTML = p.profiles.length ? '<div class="strats srvs">' + p.profiles.map(pCard).join('') + '</div>'
-      : '<div class="empty"><span>Прокси пока нет. Вставьте адрес выше или заполните форму справа.</span></div>';
+    if (el) el.innerHTML = '<div class="strats srvs">' + p.profiles.map(pCard).join('') +
+      '<button class="strat srv vcard add" data-act="pOpenAdd"' + (p.busy ? ' disabled' : '') + '><span class="shd"><span class="sn">' + ico('plus') + '<span class="nm">Добавить прокси</span></span></span><span class="sf"><span class="ad">SOCKS5, HTTP или HTTPS</span></span></button></div>';
     var pp = function (id, on) { var e = $(id); if (e) e.setAttribute('aria-pressed', String(on)); };
     pp('#pModeTun', cfg.mode === 'tun'); pp('#pModeProxy', cfg.mode !== 'tun');
     var tun = cfg.mode === 'tun';
@@ -2497,7 +2513,7 @@
       }).catch(function (e) { toast(String(e).slice(0, 200), 'warn'); });
     },
     copyTg: function () { copyText($('#tgLink').value, 'Ссылка скопирована'); },
-    vImport: vImport, vPing: function () { vPingAll(false); }, vToggle: vToggle, vSubOpen: vSubOpen, vNote: vNote, pAdd: pAdd, pForm: pForm, pPing: function () { pPingAll(false); }, pPick: pPick, pDel: pDel, pMode: pMode, pRepair: pRepair, pLog: pLog, vRepair: vRepair, vLog: vLog, vQuick: vQuick, vProcs: vProcs, vRuleAdd: vRuleAdd,
+    vImport: vImport, vPing: function () { vPingAll(false); }, vToggle: vToggle, vSubOpen: vSubOpen, vNote: vNote, pOpenAdd: pOpenAdd, pSubmit: pSubmit, pPing: function () { pPingAll(false); }, pPick: pPick, pDel: pDel, pMode: pMode, pRepair: pRepair, pLog: pLog, vRepair: vRepair, vLog: vLog, vQuick: vQuick, vProcs: vProcs, vRuleAdd: vRuleAdd,
     vPick: function (a) { vPick(a); }, vDel: function (a) { vDel(a); }, vDefault: function (a) { vDefault(a); }, vMode: function (a) { vMode(a); },
     vRuleAct: function (a) { vRuleAct(a); }, vRuleDel: function (a) { vRuleDel(a); }, vPickProc: function (a) { vPickProc(a); },
     vSubAdd: vSubAdd, vSubRefresh: function (a) { vSubRefresh(a); }, vSubRemove: function (a) { vSubRemove(a); },
@@ -2577,6 +2593,9 @@
     if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('.srv[role="button"]')) { e.preventDefault(); e.target.click(); }
   });
 
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey && e.target && e.target.id && /^pm(Host|Port|User|Pass|Name)$/.test(e.target.id)) { e.preventDefault(); pSubmit(); }
+  });
   document.addEventListener('change', function (e) {
     var el = e.target;
     if (el.dataset && el.dataset.bind) {

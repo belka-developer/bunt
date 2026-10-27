@@ -222,7 +222,7 @@ h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.01em; text-wrap: bala
 
 .sec-item.warn .ic, .sec-item.warn .res { color: var(--warn); }
 .sec-item small { display: block; color: var(--muted); font-size: 12px; }
-.modal { position: fixed; inset: 0; background: rgba(2, 6, 10, 0.72); display: grid; place-items: center; padding: 16px; z-index: 40; }
+.modal { position: fixed; inset: 0; background: rgba(2, 6, 10, 0.6); -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px); display: grid; place-items: center; padding: 16px; z-index: 40; }
 .dialog { background: var(--panel); border: 1px solid var(--line-2); border-radius: 14px; width: min(580px, 100%); max-height: calc(100vh - 32px); overflow: auto; display: grid; gap: 14px; padding: 18px; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); }
 .d-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .d-head h3 { margin: 0; font-size: 15px; font-family: var(--font-mono); font-weight: 500; overflow-wrap: anywhere; }
@@ -501,3 +501,9 @@ body.app .view { height: 100vh; overflow-y: auto; }
 .vcard.bad-link { opacity: 0.7; }
 .vright { display: inline-flex; align-items: center; gap: 4px; flex: none; }
 .row .lbl small.warn-text { color: var(--warn); }
+
+.vcard.add { border-style: dashed; background: transparent; color: var(--muted); text-align: left; font: inherit; }
+.vcard.add .nm { color: var(--accent); }
+.vcard.add .ic { color: var(--accent); }
+.vcard.add:hover { border-color: var(--accent); }
+.vcard.add:disabled { opacity: .5; cursor: default; }
