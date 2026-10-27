@@ -354,6 +354,10 @@ pub(crate) struct Node {
     pub(crate) mode: String,
     pub(crate) header: String,
     pub(crate) extra: String,
+    /// vless | http | https | socks5
+    pub(crate) proto: String,
+    pub(crate) user: String,
+    pub(crate) pass: String,
 }
 
 pub(crate) fn percent_decode(s: &str) -> String {
@@ -385,8 +389,68 @@ fn clean_name(s: &str) -> String {
     t.chars().take(60).collect()
 }
 
+const PROXY_SCHEMES: [&str; 7] = ["http://", "https://", "socks://", "socks4://", "socks4a://", "socks5://", "socks5h://"];
+
+pub(crate) fn is_proxy_link(l: &str) -> bool {
+    let low = l.trim().to_lowercase();
+    PROXY_SCHEMES.iter().any(|p| low.starts_with(p))
+}
+
+/// Обычный прокси: `схема://[логин[:пароль]@]хост:порт[#имя]`.
+pub(crate) fn parse_proxy(link: &str) -> Result<Node, String> {
+    let l = link.trim();
+    let (scheme, rest) = l.split_once("://").ok_or("Это не ссылка прокси.")?;
+    let proto = match scheme.to_lowercase().as_str() {
+        "http" => "http",
+        "https" => "https",
+        "socks4" | "socks4a" => return Err("SOCKS4 ядро Xray не поддерживает (только SOCKS5, HTTP и HTTPS). Если у прокси есть SOCKS5, используйте socks5://.".into()),
+        "socks" | "socks5" | "socks5h" => "socks5",
+        other => return Err(format!("Протокол «{other}» не поддерживается. Бунт понимает http, https и socks5.")),
+    };
+    let (rest, frag) = rest.split_once('#').unwrap_or((rest, ""));
+    let main = rest.split(['?', '/']).next().unwrap_or("");
+    let (auth, hostport) = match main.rsplit_once('@') {
+        Some((a, h)) => (a, h),
+        None => ("", main),
+    };
+    let (user, pass) = match auth.split_once(':') {
+        Some((u, p)) => (percent_decode(u), percent_decode(p)),
+        None => (percent_decode(auth), String::new()),
+    };
+    if has_ctrl(&user) || has_ctrl(&pass) || user.len() > 255 || pass.len() > 255 {
+        return Err("Неверный логин или пароль прокси.".into());
+    }
+    let (host, port) = if let Some(r) = hostport.strip_prefix('[') {
+        let (h, p) = r.split_once(']').ok_or("Неверный адрес IPv6.")?;
+        (h.to_string(), p.strip_prefix(':').unwrap_or("").to_string())
+    } else {
+        let (h, p) = hostport.rsplit_once(':').ok_or("Укажите порт после адреса, например host:1080.")?;
+        (h.to_string(), p.to_string())
+    };
+    let port: u16 = port.parse().ok().filter(|p| *p > 0).ok_or("Неверный порт.")?;
+    if host.is_empty() || host.len() > 253 || !host.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ':')) {
+        return Err("Неверный адрес прокси.".into());
+    }
+    let name = clean_name(&percent_decode(frag));
+    Ok(Node {
+        name: if name.is_empty() { format!("{host}:{port}") } else { name },
+        address: host,
+        port,
+        network: "tcp".into(),
+        security: if proto == "https" { "tls".into() } else { "none".into() },
+        fp: "chrome".into(),
+        proto: proto.into(),
+        user,
+        pass,
+        ..Node::default()
+    })
+}
+
 pub(crate) fn parse_link(link: &str) -> Result<Node, String> {
     let l = link.trim();
+    if is_proxy_link(l) {
+        return parse_proxy(l);
+    }
     let rest = l.strip_prefix("vless://").ok_or("Это не ссылка vless://")?;
     let (rest, frag) = rest.split_once('#').unwrap_or((rest, ""));
     let (main, query) = rest.split_once('?').unwrap_or((rest, ""));
@@ -461,6 +525,9 @@ pub(crate) fn parse_link(link: &str) -> Result<Node, String> {
         mode: g("mode"),
         header: g("headertype"),
         extra: g("extra"),
+        proto: "vless".into(),
+        user: String::new(),
+        pass: String::new(),
     })
 }
 
@@ -491,6 +558,10 @@ pub struct Profile {
     network: String,
     security: String,
     flow: String,
+    /// vless | http | https | socks5
+    proto: String,
+    /// у прокси заданы логин и пароль
+    auth: bool,
     ok: bool,
     error: String,
 }
@@ -534,6 +605,8 @@ fn view(s: &Stored) -> Profile {
             network: n.network,
             security: n.security,
             flow: n.flow,
+            proto: if n.proto.is_empty() { "vless".into() } else { n.proto.clone() },
+            auth: !n.user.is_empty(),
             ok: true,
             error: String::new(),
         },
@@ -736,11 +809,26 @@ pub(crate) fn build_config(n: &Node, addr: &str, cfg: &Config, tun: bool) -> Val
             stream["tlsSettings"]["serverName"] = json!(n.address);
         }
     }
+    let proxy_out = if matches!(n.proto.as_str(), "http" | "https" | "socks5") {
+        let mut server = json!({ "address": addr, "port": n.port });
+        if !n.user.is_empty() {
+            server["users"] = json!([{ "user": n.user, "pass": n.pass }]);
+        }
+        let protocol = if n.proto.starts_with("socks") { "socks" } else { "http" };
+        let settings = json!({ "servers": [server] });
+        let mut out = json!({ "tag": "proxy", "protocol": protocol, "settings": settings });
+        if n.proto == "https" {
+            out["streamSettings"] = stream.clone();
+        }
+        out
+    } else {
+        json!({ "tag": "proxy", "protocol": "vless", "settings": { "vnext": [{ "address": addr, "port": n.port, "users": [user] }] }, "streamSettings": stream })
+    };
     json!({
         "log": { "loglevel": "warning" },
         "inbounds": inbounds,
         "outbounds": [
-            { "tag": "proxy", "protocol": "vless", "settings": { "vnext": [{ "address": addr, "port": n.port, "users": [user] }] }, "streamSettings": stream },
+            proxy_out,
             { "tag": "direct", "protocol": "freedom" },
             { "tag": "block", "protocol": "blackhole" }
         ],
@@ -1224,6 +1312,50 @@ pub async fn vless_import(text: String) -> Result<Imported, String> {
     .await
 }
 
+/// Добавляет обычные прокси (http, https, socks5). Строка без схемы `host:port` считается HTTP-прокси.
+#[tauri::command]
+pub async fn proxy_add(text: String) -> Result<Imported, String> {
+    blocking(move || {
+        let mut links = Vec::new();
+        let mut skipped = 0;
+        for line in text.lines().map(|l| l.trim()).filter(|l| !l.is_empty()) {
+            if is_proxy_link(line) {
+                links.push(line.to_string());
+            } else if !line.contains("://") && line.contains(':') {
+                links.push(format!("http://{line}"));
+            } else {
+                skipped += 1;
+            }
+        }
+        if links.is_empty() {
+            return Err("Не нашёл прокси. Вставьте адрес вида socks5://логин:пароль@хост:1080 или http://хост:8080.".into());
+        }
+        let (added, dup, bad) = merge_links(&links, "")?;
+        if added + dup == 0 {
+            return Err("Ни один прокси не удалось прочитать: проверьте адрес и порт.".into());
+        }
+        let mut c = load_config();
+        if c.active.is_empty() || !read_profiles().iter().any(|s| s.id == c.active) {
+            if let Some(f) = read_profiles().last() {
+                c.active = f.id.clone();
+                let _ = save_config(&c);
+            }
+        }
+        let mut message = format!("Добавлено прокси: {added}.");
+        if dup > 0 {
+            message += &format!(" Уже были: {dup}.");
+        }
+        if bad > 0 {
+            message += &format!(" Не удалось прочитать: {bad}.");
+        }
+        if skipped > 0 {
+            message += &format!(" Пропущено строк: {skipped}.");
+        }
+        Ok(Imported { info: info(), message })
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn vless_delete(ids: Vec<String>) -> Result<Info, String> {
     blocking(move || {
@@ -1273,6 +1405,13 @@ pub async fn vless_profile_view(id: String) -> Result<String, String> {
     blocking(move || {
         let s = read_profiles().into_iter().find(|s| s.id == id).ok_or("Профиль не найден.")?;
         let n = parse_link(&s.link)?;
+        if n.proto != "vless" {
+            let kind = match n.proto.as_str() { "http" => "HTTP", "https" => "HTTPS", _ => "SOCKS5" };
+            let mut t = format!("Имя: {}\nТип: {kind}\nСервер: {}:{}\n", s.name, n.address, n.port);
+            t += if n.user.is_empty() { "Вход: без логина\n" } else { "Вход: по логину и паролю\n" };
+            t += "Логин и пароль скрыты.";
+            return Ok(t);
+        }
         let mut t = format!("Имя: {}\nСервер: {}:{}\nТранспорт: {}\nЗащита: {}\n", s.name, n.address, n.port, n.network, n.security);
         if !n.flow.is_empty() {
             t += &format!("Поток: {}\n", n.flow);
@@ -1631,6 +1770,34 @@ pub async fn vless_sub_remove(id: String) -> Result<Info, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn proxy_links() {
+        let n = super::parse_link("socks5://us%40er:p%3Aw@10.0.0.1:1080#Мой").unwrap();
+        assert_eq!((n.proto.as_str(), n.user.as_str(), n.pass.as_str(), n.port, n.name.as_str()), ("socks5", "us@er", "p:w", 1080, "Мой"));
+        assert_eq!(super::parse_link("http://example.com:8080").unwrap().name, "example.com:8080");
+        let h = super::parse_link("https://[::1]:443").unwrap();
+        assert_eq!((h.proto.as_str(), h.security.as_str(), h.address.as_str()), ("https", "tls", "::1"));
+        assert!(super::parse_link("socks4a://h.ru:1").unwrap_err().contains("SOCKS4"));
+        assert!(super::parse_link("http://h.ru").is_err());
+        assert!(super::parse_link("http://h.ru:0").is_err());
+    }
+
+    #[test]
+    fn proxy_outbound() {
+        let cfg = super::Config::default();
+        for (link, proto, ver) in [("socks5://u:p@1.2.3.4:1080", "socks", false), ("http://u@1.2.3.4:8080", "http", false)] {
+            let n = super::parse_link(link).unwrap();
+            let c = super::build_config(&n, "1.2.3.4", &cfg, false);
+            let o = &c["outbounds"][0];
+            assert_eq!(o["tag"], "proxy");
+            assert_eq!(o["protocol"], proto);
+            assert_eq!(o["settings"]["servers"][0]["port"], n.port);
+            assert_eq!(o["settings"]["version"].is_string(), ver);
+        }
+        let n = super::parse_link("https://h.ru:443").unwrap();
+        assert_eq!(super::build_config(&n, "1.2.3.4", &cfg, false)["outbounds"][0]["streamSettings"]["security"], "tls");
+    }
+
     #[test]
     fn lock_args_include_user() {
         let a = super::lock_args(Some("S-1-5-21-1-2-3-1001"), true);

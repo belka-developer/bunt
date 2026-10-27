@@ -63,6 +63,7 @@
             <button class="nav" data-go="discord"><svg class="ic"><use href="#i-chat"/></svg>Zapret (Discord)</button>
             <button class="nav" data-go="telegram"><svg class="ic"><use href="#i-plane"/></svg>Zapret (Telegram)</button>
             <button class="nav" data-go="vless"><svg class="ic"><use href="#i-net"/></svg>VLESS</button>
+            <button class="nav" data-go="proxy"><svg class="ic"><use href="#i-wifi"/></svg>Proxy</button>
             <button class="nav" data-go="wg"><svg class="ic"><use href="#i-vpn"/></svg>WireGuard</button>
             <button class="nav" data-go="dns"><svg class="ic"><use href="#i-globe"/></svg>DNS</button>
             <button class="nav" data-go="fptn"><svg class="ic"><use href="#i-tunnel"/></svg>FPTN</button>
@@ -365,6 +366,54 @@
                   <div class="row"><span class="lbl">Версия ядра</span><span class="val" id="vVer">–</span></div>
                   <div class="row"><span class="lbl">Источник</span><span class="val">XTLS/Xray-core</span></div>
                   <div class="row"><span class="lbl">Режим</span><span class="val">Скрытый процесс, без окна и трея</span></div>
+                </div>
+              </div>
+            </div>
+            </div>
+          </section>
+
+          <!-- Proxy: обычные http, https и socks5 на том же ядре Xray -->
+          <section data-page="proxy" hidden>
+            <div class="page-head">
+              <div>
+                <h1>Proxy</h1>
+                <p class="sub">Обычные прокси: SOCKS5, HTTP и HTTPS, с логином и паролем или без. Работают на ядре Xray из вкладки VLESS, режим и правила общие.</p>
+              </div>
+              <div class="head-sw"><span class="state" id="pxState"></span></div>
+            </div>
+            <div class="panel install" id="pxNeed" hidden>
+              <h3>Нужно ядро Xray</h3>
+              <p class="sub">Прокси подключаются через то же ядро, что и VLESS. Установите его во вкладке VLESS, это займёт около минуты.</p>
+              <div><button class="btn primary" data-act="goVless">Открыть VLESS</button></div>
+            </div>
+            <div data-body="proxy">
+            <div class="cols">
+              <div class="stack">
+                <div class="panel">
+                  <div class="panel-head"><h3>Прокси</h3><button class="btn sm" data-act="vPing" id="pxPingBtn" title="Проверить время ответа всех прокси"><svg class="ic"><use href="#i-refresh"/></svg>Пинг</button></div>
+                  <div class="field-row"><input class="field mono" id="pxIn" placeholder="socks5://user:pass@host:1080" aria-label="Адрес прокси" spellcheck="false"><button class="btn primary" data-act="pxAdd"><svg class="ic"><use href="#i-plus"/></svg>Добавить</button></div>
+                  <p class="note mt-s" id="pxMsg">Можно вставить несколько адресов, по одному в строке. Строка вида хост:порт считается HTTP-прокси.</p>
+                  <div id="pxList"></div>
+                </div>
+              </div>
+              <div class="stack">
+                <div class="panel">
+                  <h3>Подключение</h3>
+                  <div class="row"><span class="lbl">Выбранный прокси</span><span class="val" id="pxCur">Не выбран</span></div>
+                  <div class="row"><span class="lbl">Режим<small id="pxModeNote"></small></span><span class="val" id="pxMode">–</span></div>
+                  <div class="row" style="justify-content:flex-start;gap:8px;flex-wrap:wrap"><button class="btn primary" data-act="pxToggle" id="pxToggle">Подключить</button><button class="btn" data-act="goVless">Режим и правила</button></div>
+                  <p class="note mt-s">TUN, порты, правила для приложений и сайтов настраиваются во вкладке VLESS. Одновременно работает одно подключение: либо сервер VLESS, либо прокси.</p>
+                </div>
+                <div class="panel">
+                  <h3>Добавить вручную</h3>
+                  <div class="row"><span class="lbl">Тип</span><select class="field" data-bind="v.px.type" aria-label="Тип прокси" style="width:150px"><option value="socks5">SOCKS5</option><option value="http">HTTP</option><option value="https">HTTPS</option></select></div>
+                  <div class="row"><span class="lbl">Адрес</span><input class="field mono" data-bind="v.px.host" spellcheck="false" aria-label="Адрес прокси" placeholder="proxy.example.com" style="width:200px"></div>
+                  <div class="row"><span class="lbl">Порт</span><input class="field mono" data-bind="v.px.port" inputmode="numeric" aria-label="Порт" placeholder="1080" style="width:100px"></div>
+                  <div class="row"><span class="lbl">Логин<small>Если нужен</small></span><input class="field mono" data-bind="v.px.user" spellcheck="false" autocomplete="off" aria-label="Логин" style="width:200px"></div>
+                  <div class="row"><span class="lbl">Пароль<small>Хранится только на этом компьютере</small></span><input class="field mono" type="password" data-bind="v.px.pass" autocomplete="off" aria-label="Пароль" style="width:200px"></div>
+                  <div class="row"><span class="lbl">Название<small>Необязательно</small></span><input class="field" data-bind="v.px.name" spellcheck="false" aria-label="Название" style="width:200px"></div>
+                  <div class="row" style="justify-content:flex-end"><button class="btn primary" data-act="pxForm"><svg class="ic"><use href="#i-plus"/></svg>Добавить</button></div>
+                  <p class="note mt-s">SOCKS4 ядро Xray не поддерживает: нужен SOCKS5, HTTP или HTTPS.</p>
                 </div>
               </div>
             </div>

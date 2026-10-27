@@ -23,7 +23,7 @@
   if (appMode) document.body.classList.add('app');
   var installed = function (id) { var c = S.comps.filter(function (x) { return x.id === id; })[0]; return !!(c && c.cur); };
   var live = function () { return S.comps.filter(function (c) { return !SOON[c.id]; }); };
-  var PAGES = ['home', 'discord', 'telegram', 'vless', 'wg', 'dns', 'fptn', 'security', 'updates', 'settings'];
+  var PAGES = ['home', 'discord', 'telegram', 'vless', 'proxy', 'wg', 'dns', 'fptn', 'security', 'updates', 'settings'];
   var SUFFIX = ['', 'ALT'];
   for (var q = 2; q <= 13; q++) SUFFIX.push('ALT' + q);
   SUFFIX = SUFFIX.concat(['EXP', 'FAKE TLS AUTO', 'FAKE TLS AUTO ALT', 'FAKE TLS AUTO ALT2', 'FAKE TLS AUTO ALT3', 'SIMPLE FAKE', 'SIMPLE FAKE ALT', 'SIMPLE FAKE ALT2']);
@@ -50,7 +50,7 @@
     telegram: { port: '1443', link: '' },
     fc: { token_in: '', bypass_method: 'sni-spoofing-yandex-26-4', strategy: 'rolling-tunnel', sni: 'google.com', mtu: '1420', preferred_server: '', tun_name: 'FPTN', tun_ip: '10.0.0.1', exclude_networks: '10.0.0.0/8,192.168.0.0/16', include_networks: '', split: false, split_mode: 'exclude', split_domains: '', adblock: true, blacklist: '', auto_gateway: true, remove_adapter: true, autostart: false },
     fptn: { tokenSet: false, hint: '', servers: [], ping: {}, pinging: '', pingAt: 0, tokenError: '', adapter: { exists: false, status: '', description: '' }, dirty: false, busy: false, repairMsg: '', logOpen: false, log: '' },
-    v: { profiles: [], config: { active: '', mode: 'tun', socks_port: 10808, http_port: 10809, default_action: 'proxy', bypass_lan: true, dns: ['1.1.1.1', '8.8.8.8'], rules: [], subs: [], sub_auto: true, autoconnect: false, keep_on_exit: false }, running: false, tun: false, dirty: false, adapter: false, busy: false, ping: {}, pinging: {}, pingAt: 0, open: {}, noteOpen: {}, refreshing: '', repairMsg: '', logOpen: false, log: '', view: '', viewName: '', rule: { kind: 'app', value: '', action: 'proxy' }, socks: '10808', http: '10809', dns_text: '1.1.1.1, 8.8.8.8', loaded: false },
+    v: { profiles: [], config: { active: '', mode: 'tun', socks_port: 10808, http_port: 10809, default_action: 'proxy', bypass_lan: true, dns: ['1.1.1.1', '8.8.8.8'], rules: [], subs: [], sub_auto: true, autoconnect: false, keep_on_exit: false }, running: false, tun: false, dirty: false, adapter: false, busy: false, ping: {}, pinging: {}, pingAt: 0, open: {}, noteOpen: {}, refreshing: '', repairMsg: '', logOpen: false, log: '', view: '', viewName: '', rule: { kind: 'app', value: '', action: 'proxy' }, px: { type: 'socks5', host: '', port: '', user: '', pass: '', name: '' }, socks: '10808', http: '10809', dns_text: '1.1.1.1, 8.8.8.8', loaded: false },
     dn: { presets: [], adapters: [], active: '', has_snapshot: false, config: { last: '', custom: ['', ''], ipv6: true, doh: false }, vpn: false, doh_supported: false, busy: false, loaded: false, off: [], ping: {}, pinging: false, c1: '', c2: '', msg: '' },
     w: { profiles: [], config: { active: '', autoconnect: false, keep_on_exit: false, split_default: true }, running: false, tunnel: '', dirty: false, adapter: { exists: false, status: '', description: '' }, stats: { handshake_ago: null, rx: 0, tx: 0 }, busy: false, repairMsg: '', logOpen: false, log: '', paste: false, imp_name: 'wg0', imp_text: '', view: '', viewName: '' },
     tgc: { autostart: false, host: '127.0.0.1', port: '1443', secret: '', dc_ip: '2:149.154.167.220\n4:149.154.167.220', verbose: false, buf_kb: '256', pool_size: '4', log_max_mb: '5', log_backups: '1', cfproxy: true, h2: true, cf_domain_on: false, cf_domain: '', cf_worker_on: false, cf_worker: '', force_test_dc: false, no_secure: false, fake_tls_domain: '' },
@@ -98,6 +98,9 @@
       ['Finland', 'fi', 's1', 'fi3.example.net', 'reality'], ['Russia', 'ru', 's2', 'ru1.example.org', 'reality'], ['Kazakhstan', 'kz', 's2', 'kz1.example.org', 'reality'],
       ['Home VPS', '', '', '203.0.113.7', 'reality'], ['USA', 'us', '', '198.51.100.20', 'tls']
     ].map(function (x, i) { return { id: 'p' + i, name: x[0], label: x[0], code: x[1], sub: x[2], address: x[3], port: 443, network: 'tcp', security: x[4], flow: '', ok: true, error: '' }; });
+    S.v.profiles = S.v.profiles.concat([['Офисный SOCKS', 'socks5', '10.20.0.5', 1080, true], ['Прокси Германия', 'http', 'de.proxy.example', 8080, true], ['Без пароля', 'https', 'px.example.org', 443, false]].map(function (x, i) {
+      return { id: 'x' + i, name: x[0], label: x[0], code: '', sub: '', address: x[2], port: x[3], network: 'tcp', security: 'none', flow: '', proto: x[1], auth: x[4], ok: true, error: '' };
+    }));
     S.v.config.active = 'p1';
     var nowS = Math.floor(Date.now() / 1000), GB = 1073741824;
     S.v.config.subs = [
@@ -617,7 +620,7 @@
 
   function renderAll() {
     renderSide(); renderCards(); renderTray(); renderHeads(); renderLog();
-    renderInstall(); renderDiscord(); renderTelegram(); renderFptn(); renderWg(); renderDn(); renderVless();
+    renderInstall(); renderDiscord(); renderTelegram(); renderFptn(); renderWg(); renderDn(); renderVless(); renderProxy();
     renderVersions(); renderNotes(); renderSecurity(); renderAdmin(); sync(); syncTray();
   }
 
@@ -626,7 +629,7 @@
     S.page = page;
     if (page === 'dns') loadDn();
     if (page === 'fptn' && S.fptn.servers.length) fAutoPing();
-    if (page === 'vless' && S.v.profiles.length) vAutoPing();
+    if ((page === 'vless' || page === 'proxy') && S.v.profiles.length) vAutoPing();
     if (page === 'discord') refreshDiscordExtras();
     if (page === 'telegram') refreshTgExtras(); else stopQr();
     $$('[data-page]').forEach(function (s) { s.hidden = s.dataset.page !== page; });
@@ -1545,10 +1548,12 @@
     }
     return out + '</div>';
   }
+  var PXNAME = { http: 'HTTP', https: 'HTTPS', socks5: 'SOCKS5' };
+  function isProxy(p) { return !!p.proto && p.proto !== 'vless'; }
   function vCard(p, sub) {
     var v = S.v, cfg = v.config;
     var sel = cfg.active === p.id, live = v.running && sel, ms = v.ping[p.id], busy = !!v.pinging[p.id], best = vBest();
-    var info = p.ok ? p.address + ':' + p.port + ' · ' + p.network + (p.security !== 'none' ? ' · ' + p.security : '') : (p.error || 'Ссылка повреждена');
+    var info = !p.ok ? (p.error || 'Ссылка повреждена') : isProxy(p) ? PXNAME[p.proto] + ' · ' + p.address + ':' + p.port + (p.auth ? ' · логин' : '') : p.address + ':' + p.port + ' · ' + p.network + (p.security !== 'none' ? ' · ' + p.security : '');
     var tag = live ? '<span class="tag ok">включён</span>' : busy ? '<span class="tag warn">…</span>'
       : !(p.id in v.ping) ? '' : ms == null ? '<span class="tag bad">нет ответа</span>'
       : '<span class="tag ' + (ms === best ? 'ok' : ms > 250 ? 'warn' : '') + '">' + ms + ' мс</span>';
@@ -1576,7 +1581,7 @@
         usageHtml(s) + noteHtml(s) +
         (open ? (list.length ? '<div class="strats srvs">' + list.map(function (p) { return vCard(p, true); }).join('') + '</div>' : '<div class="sg-note">В подписке нет серверов.</div>') : '') + '</section>';
     });
-    var own = v.profiles.filter(function (p) { return !p.sub; });
+    var own = v.profiles.filter(function (p) { return !p.sub && !isProxy(p); });
     if (own.length || !cfg.subs.length) {
       out += '<section class="sgrp plain"><div class="sg-head"><span class="sg-toggle" style="cursor:default">' + ico('net').replace('class="ic"', 'class="ic" style="transform:none"') + '<span class="nm">Обычные серверы</span><span class="tag">' + own.length + '</span></span></div>' +
         (own.length ? '<div class="strats srvs">' + own.map(function (p) { return vCard(p, false); }).join('') + '</div>' : '<div class="empty"><span>Серверов пока нет. Вставьте ссылку vless:// или адрес подписки выше.</span></div>') + '</section>';
@@ -1682,6 +1687,52 @@
           .catch(function () {}).then(function () { S.v.busy = false; renderAll(); });
       } else renderAll();
     }).catch(function () {});
+  }
+  /* вкладка Proxy: те же профили, но с протоколом http, https или socks5 */
+  function pxAddText(text, input) {
+    if (!text) { pxMsg('Вставьте адрес прокси, например socks5://хост:1080.'); return; }
+    if (!inTauri) { pxMsg('Добавление прокси работает в приложении Бунт.'); return; }
+    S.v.busy = true; renderAll();
+    T.core.invoke('proxy_add', { text: text }).then(function (d) {
+      if (input) input.value = '';
+      applyV(d.info); pxMsg(d.message); addLog({ svc: 'Proxy', m: d.message, ok: true }); toast(d.message);
+    }).catch(function (err) { pxMsg(String(err)); vErr(err); }).then(function () { S.v.busy = false; renderAll(); });
+  }
+  function pxMsg(t) { var m = $('#pxMsg'); if (m) m.textContent = t; }
+  function pxAdd() { var el = $('#pxIn'); pxAddText(el.value.trim(), el); }
+  function pxForm() {
+    var p = S.v.px, host = String(p.host || '').trim(), port = String(p.port || '').trim();
+    if (!host || !port) { pxMsg('Укажите адрес и порт.'); return; }
+    var auth = p.user ? encodeURIComponent(p.user) + (p.pass ? ':' + encodeURIComponent(p.pass) : '') + '@' : '';
+    var h = host.indexOf(':') >= 0 && host.charAt(0) !== '[' ? '[' + host + ']' : host;
+    var link = p.type + '://' + auth + h + ':' + port + (p.name ? '#' + encodeURIComponent(String(p.name).trim()) : '');
+    pxAddText(link, null);
+    if (inTauri) { p.pass = ''; }
+  }
+  function pxCurrent() { var v = S.v; return v.profiles.filter(function (p) { return p.id === v.config.active && isProxy(p); })[0]; }
+  function pxToggle() {
+    var v = S.v;
+    if (v.busy) return;
+    if (!v.running && !pxCurrent()) { toast('Сначала выберите прокси из списка.', 'warn'); return; }
+    if (v.running && !pxCurrent()) { toast('Сейчас включён сервер VLESS. Отключите его во вкладке VLESS.', 'warn'); return; }
+    setSvc('vless', !S.on.vless);
+  }
+  function renderProxy() {
+    var v = S.v, c = comp('vless'), set = function (id, t) { var e = $(id); if (e) e.textContent = t; };
+    var list = v.profiles.filter(isProxy);
+    var need = $('#pxNeed'); if (need) need.hidden = !!c.cur || !inTauri;
+    var body = document.querySelector('[data-body="proxy"]'); if (body) body.hidden = !c.cur && inTauri;
+    var el = $('#pxList');
+    if (el) el.innerHTML = list.length ? '<div class="strats srvs">' + list.map(function (p) { return vCard(p, false); }).join('') + '</div>'
+      : '<div class="empty"><span>Прокси пока нет. Вставьте адрес выше или заполните форму справа.</span></div>';
+    var cur = pxCurrent(), mine = !!cur && v.running;
+    set('#pxCur', cur ? (cur.label || cur.name) : 'Не выбран');
+    set('#pxMode', v.config.mode === 'proxy' ? 'Системный прокси' : 'TUN');
+    set('#pxModeNote', v.config.mode === 'proxy' ? 'Работает без администратора' : 'Нужны права администратора');
+    var tg = $('#pxToggle'); if (tg) { tg.textContent = v.busy ? 'Подождите…' : mine ? 'Отключить' : 'Подключить'; tg.disabled = v.busy; tg.classList.toggle('primary', !mine); }
+    var st = $('#pxState');
+    if (st) { st.className = 'state' + (mine ? ' on' : ''); st.innerHTML = v.busy ? 'Подождите…' : mine ? '<i class="dot"></i>Подключён' : 'Отключён'; }
+    var pb = $('#pxPingBtn'); if (pb) { pb.disabled = vPingRun || !list.length; pb.lastChild.textContent = vPingRun ? 'Проверяем…' : 'Пинг'; }
   }
   function renderVless() {
     var v = S.v, c = comp('vless'), cfg = v.config;
@@ -2308,7 +2359,7 @@
       }).catch(function (e) { toast(String(e).slice(0, 200), 'warn'); });
     },
     copyTg: function () { copyText($('#tgLink').value, 'Ссылка скопирована'); },
-    vImport: vImport, vPing: function () { vPingAll(false); }, vToggle: vToggle, vSubOpen: vSubOpen, vNote: vNote, vRepair: vRepair, vLog: vLog, vQuick: vQuick, vProcs: vProcs, vRuleAdd: vRuleAdd,
+    vImport: vImport, vPing: function () { vPingAll(false); }, vToggle: vToggle, vSubOpen: vSubOpen, vNote: vNote, pxAdd: pxAdd, pxForm: pxForm, pxToggle: pxToggle, goVless: function () { go('vless'); }, vRepair: vRepair, vLog: vLog, vQuick: vQuick, vProcs: vProcs, vRuleAdd: vRuleAdd,
     vPick: function (a) { vPick(a); }, vDel: function (a) { vDel(a); }, vDefault: function (a) { vDefault(a); }, vMode: function (a) { vMode(a); },
     vRuleAct: function (a) { vRuleAct(a); }, vRuleDel: function (a) { vRuleDel(a); }, vPickProc: function (a) { vPickProc(a); },
     vSubAdd: vSubAdd, vSubRefresh: function (a) { vSubRefresh(a); }, vSubRemove: function (a) { vSubRemove(a); },

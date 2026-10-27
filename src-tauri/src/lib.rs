@@ -318,7 +318,8 @@ pub fn run() {
             vless::vless_log,
             vless::vless_sub_add,
             vless::vless_sub_refresh,
-            vless::vless_sub_remove
+            vless::vless_sub_remove,
+            vless::proxy_add
         ])
         .on_window_event(|window, event| {
             if window.label() != "main" {
