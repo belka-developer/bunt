@@ -507,3 +507,11 @@ body.app .view { height: 100vh; overflow-y: auto; }
 .vcard.add .ic { color: var(--accent); }
 .vcard.add:hover { border-color: var(--accent); }
 .vcard.add:disabled { opacity: .5; cursor: default; }
+
+/* Полосы прокрутки в стиле программы */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; min-height: 36px; transition: background-color .15s; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); background-clip: padding-box; border: 2px solid transparent; }
+::-webkit-scrollbar-thumb:active { background: var(--accent); background-clip: padding-box; border: 2px solid transparent; }
+::-webkit-scrollbar-corner { background: transparent; }

@@ -344,10 +344,8 @@ pub fn run() {
                     api.prevent_close();
                     let _ = window.hide();
                 }
-                // Сворачивание тоже уводит в трей
-                tauri::WindowEvent::Resized(_) if tray && window.is_minimized().unwrap_or(false) => {
-                    let _ = window.hide();
-                }
+                // Сворачивание (в том числе повторное нажатие на значок в панели задач) только убирает окно
+                // на панель задач. В трей Бунт уходит лишь по крестику.
                 _ => {}
             }
         })
