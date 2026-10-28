@@ -376,14 +376,37 @@ fn check_autostart() -> Vec<Item> {
     out
 }
 
+/// Путь из ImagePath службы: без кавычек и префикса `\??\`, до .exe или .sys.
+pub(crate) fn image_path(v: &str) -> String {
+    let v = v.trim().trim_start_matches('"').trim_start_matches("\\??\\");
+    let low = v.to_lowercase();
+    let end = [".exe", ".sys"].iter().filter_map(|e| low.find(e).map(|i| i + e.len())).min().unwrap_or(v.len());
+    v[..end].to_string()
+}
+
+/// Файл службы. `sc qc` без прав администратора часто отказывает, поэтому читаем и реестр.
+fn service_path(name: &str) -> Option<String> {
+    if let Some(p) = crate::zapret::service_binary(name) {
+        return Some(p);
+    }
+    #[cfg(windows)]
+    {
+        let key = format!(r"HKLM\SYSTEM\CurrentControlSet\Services\{name}");
+        let t = crate::settings::run_hidden("reg", &["query", &key, "/v", "ImagePath"])?;
+        return reg_value(&t).map(|v| image_path(&v));
+    }
+    #[cfg(not(windows))]
+    None
+}
+
 fn check_services() -> Vec<Item> {
     let mut out = Vec::new();
     for (name, title) in [("zapret", "Служба zapret"), ("WinDivert", "Драйвер WinDivert"), ("WinDivert14", "Драйвер WinDivert 1.4")] {
         if !crate::zapret::service_exists(name) {
             continue;
         }
-        let Some(path) = crate::zapret::service_binary(name) else {
-            out.push(item(title, "warn", Some("Служба есть, но Бунт не смог прочитать путь к её файлу.".into())));
+        let Some(path) = service_path(name) else {
+            out.push(item(title, "info", Some("Служба зарегистрирована, но Windows не отдала путь к её файлу (для этого нужны права администратора). Файл драйвера проверяют хеши и подпись компонента.".into())));
             continue;
         };
         if !crate::zapret::is_ours(&path) {
@@ -399,7 +422,7 @@ fn check_services() -> Vec<Item> {
             Some((st, subject)) if st == "Valid" => out.push(item(title, "ok", Some(format!("Из папки Бунта, подписан: {}.", signer_name(&subject))))),
             Some((st, _)) if st == "HashMismatch" => out.push(item(title, "bad", Some("Файл изменён после подписания.".into()))),
             Some((st, _)) if st == "NotSigned" && name == "zapret" => out.push(item(title, "ok", Some("Из папки Бунта. Файл проверяют хеши компонента.".into()))),
-            Some((st, _)) => out.push(item(title, "warn", Some(format!("Из папки Бунта, статус подписи: {st}.")))),
+            Some((st, _)) => out.push(item(title, "info", Some(format!("Из папки Бунта. Windows сообщает о подписи: {st}. Файл проверяют хеши компонента.")))),
             None => out.push(item(title, "info", Some("Из папки Бунта. Подпись в этой системе не проверялась.".into()))),
         }
     }
@@ -751,6 +774,9 @@ mod tests {
 
     #[test]
     fn parsers() {
+        assert_eq!(image_path("\\??\\E:\\ProgramFiles\\Bunt\\modules\\discord\\1.10.4\\bin\\WinDivert64.sys"), "E:\\ProgramFiles\\Bunt\\modules\\discord\\1.10.4\\bin\\WinDivert64.sys");
+        assert_eq!(image_path("\"C:\\x\\winws.exe\" --wf-tcp=80"), "C:\\x\\winws.exe");
+        assert_eq!(reg_value("    ImagePath    REG_EXPAND_SZ    \\??\\C:\\a.sys\r\n").unwrap(), "\\??\\C:\\a.sys");
         assert_eq!(exe_of_command("\"C:\\Program Files\\Bunt\\Bunt.exe\" --hidden"), "C:\\Program Files\\Bunt\\Bunt.exe");
         assert_eq!(exe_of_command("C:\\Bunt\\Bunt.exe --hidden"), "C:\\Bunt\\Bunt.exe");
         assert_eq!(reg_value("\r\nHKEY_CURRENT_USER\\...\\Run\r\n    Bunt    REG_SZ    \"C:\\B\\Bunt.exe\" --hidden\r\n").unwrap(), "\"C:\\B\\Bunt.exe\" --hidden");
