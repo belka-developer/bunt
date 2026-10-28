@@ -189,6 +189,14 @@ async fn fallback_release(owner: &str, repo: &str, tag: Option<&str>) -> Result<
 }
 
 /// Архив релиза и его хеш, если GitHub его отдаёт.
+/// Архив релиза для сверки: у Xray в релизе много архивов под разные системы, берём свой.
+pub(crate) fn archive_for(id: &str, rel: &Release) -> Result<(String, Option<String>), String> {
+    if id == "vless" || id == "proxy" {
+        return xray_asset(rel).map(|a| (a.browser_download_url.clone(), a.digest.clone())).ok_or_else(|| "В релизе нет архива Xray-core для этого компьютера.".to_string());
+    }
+    pick_archive(rel)
+}
+
 pub(crate) fn pick_archive(rel: &Release) -> Result<(String, Option<String>), String> {
     match rel.assets.iter().find(|a| a.name.to_lowercase().ends_with(".zip")) {
         Some(a) => Ok((a.browser_download_url.clone(), a.digest.clone())),

@@ -113,7 +113,7 @@ fn apply_autostart(on: bool) -> Result<(), String> {
 
 /// Имя задачи планировщика для автозапуска с правами администратора.
 #[cfg_attr(not(windows), allow(dead_code))]
-const TASK_NAME: &str = "Bunt-AdminAutostart";
+pub(crate) const TASK_NAME: &str = "Bunt-AdminAutostart";
 
 /// Скрипт создания задачи. Нужны явные настройки: по умолчанию планировщик не запускает задачу от батареи
 /// и убивает её через 72 часа, а Бунт должен работать сколько угодно.

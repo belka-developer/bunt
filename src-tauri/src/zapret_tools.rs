@@ -339,7 +339,7 @@ const HOSTS_URLS: [&str; 2] = [
 const MARK_START: &str = "# >>> Бунт: записи Flowseal. Блок можно удалить в разделе «Запрет Discord»";
 const MARK_END: &str = "# <<< Бунт";
 
-fn hosts_path() -> PathBuf {
+pub(crate) fn hosts_path() -> PathBuf {
     let root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into());
     PathBuf::from(root).join("System32").join("drivers").join("etc").join("hosts")
 }
@@ -371,7 +371,7 @@ fn parse_hosts(text: &str) -> Result<Vec<String>, String> {
 }
 
 /// Убирает блок Бунта из текста hosts.
-fn strip_block(text: &str) -> String {
+pub(crate) fn strip_block(text: &str) -> String {
     let mut out: Vec<&str> = Vec::new();
     let mut inside = false;
     for line in text.lines() {

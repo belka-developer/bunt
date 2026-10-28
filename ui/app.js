@@ -87,10 +87,12 @@
     ],
     lastCheck: 'сегодня, 14:45',
     sec: { running: false, last: nowShort(), items: [
-      { t: 'Проверка хешей файлов', st: 'ok' },
-      { t: 'Проверка цифровой подписи', st: 'ok' },
-      { t: 'Проверка целостности архива', st: 'ok' },
-      { t: 'Сравнение с эталонной версией', st: 'ok' }
+      { g: 'Файлы компонентов', t: 'Запрет Discord и YouTube: хеши файлов', st: 'ok', note: 'Проверено файлов: 64. Всё совпадает с установкой.' },
+            { g: 'Скрипты', t: 'Запрет Discord и YouTube: скрипты', st: 'ok', note: 'Проверено скриптов: 21. Опасных команд не найдено.' },
+      { g: 'Подписи', t: 'Запрет Discord и YouTube: подпись WinDivert64.sys', st: 'ok', note: 'Подписан: Basil00.' },
+      { g: 'Службы и драйверы', t: 'Драйвер WinDivert', st: 'ok', note: 'Из папки Бунта, подписан: Basil00.' },
+      { g: 'Автозапуск и система', t: 'Файл hosts', st: 'ok', note: 'Нет записей, которые перенаправляют Discord, YouTube, Telegram или GitHub.' },
+      { g: 'Автозапуск и система', t: 'Сам Бунт', st: 'info', note: 'Бунт не подписан цифровой подписью, это нормально для программы с открытым кодом.' }
     ] },
     settings: { autostart: true, autostart_admin: false, tray: true, notify: true, autoupdate: true }
   };
@@ -597,7 +599,7 @@
     var done = items.length && items.every(function (i) { return i.st !== 'idle' && i.st !== 'run'; });
     $('#secIco').className = 'sec-ico' + (run ? ' run' : bad ? ' bad' : warn ? ' warn' : '');
     $('#secTitle').textContent = run ? 'Идёт проверка…' : !done ? 'Проверка ещё не запускалась' : bad ? 'Найдены изменения в файлах' : warn ? 'Есть замечания' : 'Всё в порядке';
-    $('#secText').textContent = run ? 'Сверяем хеши и подписи компонентов.' : !done ? 'Нажмите «Запустить проверку».' : bad ? 'Файлы отличаются от тех, что были при установке. Переустановите компонент.' : warn ? 'Подробности в списке ниже.' : 'Файлы совпадают с записанными при установке.';
+    $('#secText').textContent = run ? 'Проверяем файлы, скрипты, подписи, службы и автозапуск.' : !done ? 'Нажмите «Быстрая проверка». Она же запускается сама при старте Бунта.' : bad ? 'Что-то изменено или подложено. Подробности ниже: переустановите затронутый компонент.' : warn ? 'Есть замечания, подробности в списке ниже.' : 'Файлы, скрипты, драйверы и автозапуск в порядке.';
     $('#secLast').textContent = S.sec.last;
     $('#btnSec').disabled = run;
     var bo = $('#btnSecOnline'); if (bo) bo.disabled = run;
@@ -607,9 +609,13 @@
     }).join('') : '';
     var RES = { ok: 'OK', warn: 'Внимание', bad: 'Нарушено', info: 'Заметка', run: 'Проверяю…', idle: 'Ожидает' };
     var ICO = { ok: 'check', warn: 'alert', bad: 'alert', info: 'shield', idle: 'clock' };
+    var nav = document.querySelector('.nav[data-go="security"]'); if (nav) nav.classList.toggle('alert', bad && !run);
+    var lastG = '';
     $('#secList').innerHTML = items.map(function (i) {
       var lead = i.st === 'run' ? '<span class="spin"></span>' : ico(ICO[i.st] || 'check');
-      return '<div class="sec-item ' + i.st + '">' + lead + '<span>' + esc(i.t) + (i.note ? '<small>' + esc(i.note) + '</small>' : '') + '</span><span class="res">' + (RES[i.st] || '') + '</span></div>';
+      var head = '';
+      if (i.g && i.g !== lastG) { lastG = i.g; head = '<div class="sec-group">' + esc(i.g) + '</div>'; }
+      return head + '<div class="sec-item ' + i.st + '">' + lead + '<span>' + esc(i.t) + (i.note ? '<small>' + esc(i.note) + '</small>' : '') + '</span><span class="res">' + (RES[i.st] || '') + '</span></div>';
     }).join('');
   }
 
@@ -2234,7 +2240,7 @@
     S.sec.items = [{ t: 'Скачиваем оригинальный релиз и сверяем файлы…', st: 'run' }];
     renderSecurity();
     T.core.invoke('integrity_verify_online').then(function (list) {
-      S.sec.items = list.map(function (r) { return { t: r.title, st: r.state, note: r.note }; });
+      S.sec.items = list.map(function (r) { return { t: r.title, st: r.state, note: r.note, g: r.group }; });
       var bad = list.filter(function (r) { return r.state === 'bad'; }).length;
       addLog(bad ? { m: 'Сверка с GitHub: найдены отличия от оригинала (' + bad + ').' } : { m: 'Сверка с GitHub завершена.', ok: true });
     }).catch(function (err) {
@@ -2245,6 +2251,21 @@
       renderSecurity();
     });
   }
+  /* тихая проверка при запуске и раз в шесть часов: сообщает, только если что-то нарушено */
+  function secAuto() {
+    if (!inTauri || S.sec.running) return;
+    T.core.invoke('integrity_check').then(function (list) {
+      if (S.sec.running) return;
+      S.sec.items = list.map(function (r) { return { t: r.title, st: r.state, note: r.note, g: r.group }; });
+      S.sec.last = nowShort();
+      var bad = list.filter(function (r) { return r.state === 'bad'; });
+      if (bad.length) {
+        addLog({ m: 'Проверка целостности при запуске: найдены нарушения (' + bad.length + ').' });
+        toast('Безопасность: найдены изменённые или подложенные файлы (' + bad.length + '). Откройте раздел «Безопасность».', 'warn');
+      }
+      renderSecurity();
+    }).catch(function () {});
+  }
   function runSec() {
     if (S.sec.running) return;
     if (inTauri) {
@@ -2252,7 +2273,7 @@
       S.sec.items = [{ t: 'Проверка файлов и подписей', st: 'run' }];
       renderSecurity();
       T.core.invoke('integrity_check').then(function (list) {
-        S.sec.items = list.map(function (r) { return { t: r.title, st: r.state, note: r.note }; });
+        S.sec.items = list.map(function (r) { return { t: r.title, st: r.state, note: r.note, g: r.group }; });
         var bad = list.filter(function (r) { return r.state === 'bad'; }).length;
         addLog(bad ? { m: 'Проверка целостности: найдены нарушения (' + bad + ').' } : { m: 'Проверка целостности завершена. Нарушений нет.', ok: true });
       }).catch(function (err) {
@@ -2690,6 +2711,8 @@
         setInterval(watchFptn, 15000);
       }
       loadDn();
+      setTimeout(secAuto, 12000);
+      setInterval(secAuto, 6 * 3600 * 1000);
       setInterval(function () { if (S.page === 'dns' && !S.dn.busy) loadDn(); }, 10000);
       if (comp('vless').cur) {
         T.core.invoke('vless_status').then(function (st) {
