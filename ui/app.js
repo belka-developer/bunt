@@ -604,8 +604,10 @@
     $('#btnSec').disabled = run;
     var bo = $('#btnSecOnline'); if (bo) bo.disabled = run;
     var fix = $('#secFix');
-    if (fix) fix.innerHTML = (bad && !run && inTauri) ? ['discord', 'telegram', 'fptn', 'wg', 'vless', 'proxy'].filter(installed).map(function (id) {
-      return '<div class="sec-fix"><span>Файлы компонента «' + esc(comp(id).name) + '» отличаются от оригинала. Лучше всего переустановить его.</span><button class="btn sm primary" data-act="reinstallAsk" data-arg="' + id + '">Переустановить</button></div>';
+    if (fix) fix.innerHTML = (bad && !run && inTauri) ? ['discord', 'telegram', 'fptn', 'wg', 'vless', 'proxy'].filter(function (id) {
+      return installed(id) && items.some(function (i) { return i.st === 'bad' && i.c === id; });
+    }).map(function (id) {
+      return '<div class="sec-fix"><span>В компоненте «' + esc(comp(id).name) + '» найдены нарушения (подробности выше). Лучше всего переустановить его.</span><button class="btn sm primary" data-act="reinstallAsk" data-arg="' + id + '">Переустановить</button></div>';
     }).join('') : '';
     var RES = { ok: 'OK', warn: 'Внимание', bad: 'Нарушено', info: 'Заметка', run: 'Проверяю…', idle: 'Ожидает' };
     var ICO = { ok: 'check', warn: 'alert', bad: 'alert', info: 'shield', idle: 'clock' };
@@ -2240,7 +2242,7 @@
     S.sec.items = [{ t: 'Скачиваем оригинальный релиз и сверяем файлы…', st: 'run' }];
     renderSecurity();
     T.core.invoke('integrity_verify_online').then(function (list) {
-      S.sec.items = list.map(function (r) { return { t: r.title, st: r.state, note: r.note, g: r.group }; });
+      S.sec.items = list.map(function (r) { return { t: r.title, st: r.state, note: r.note, g: r.group, c: r.comp }; });
       var bad = list.filter(function (r) { return r.state === 'bad'; }).length;
       addLog(bad ? { m: 'Сверка с GitHub: найдены отличия от оригинала (' + bad + ').' } : { m: 'Сверка с GitHub завершена.', ok: true });
     }).catch(function (err) {
@@ -2256,7 +2258,7 @@
     if (!inTauri || S.sec.running) return;
     T.core.invoke('integrity_check').then(function (list) {
       if (S.sec.running) return;
-      S.sec.items = list.map(function (r) { return { t: r.title, st: r.state, note: r.note, g: r.group }; });
+      S.sec.items = list.map(function (r) { return { t: r.title, st: r.state, note: r.note, g: r.group, c: r.comp }; });
       S.sec.last = nowShort();
       var bad = list.filter(function (r) { return r.state === 'bad'; });
       if (bad.length) {
@@ -2273,7 +2275,7 @@
       S.sec.items = [{ t: 'Проверка файлов и подписей', st: 'run' }];
       renderSecurity();
       T.core.invoke('integrity_check').then(function (list) {
-        S.sec.items = list.map(function (r) { return { t: r.title, st: r.state, note: r.note, g: r.group }; });
+        S.sec.items = list.map(function (r) { return { t: r.title, st: r.state, note: r.note, g: r.group, c: r.comp }; });
         var bad = list.filter(function (r) { return r.state === 'bad'; }).length;
         addLog(bad ? { m: 'Проверка целостности: найдены нарушения (' + bad + ').' } : { m: 'Проверка целостности завершена. Нарушений нет.', ok: true });
       }).catch(function (err) {

