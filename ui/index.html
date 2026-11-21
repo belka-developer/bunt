@@ -243,7 +243,9 @@
                   <p class="note">По одному правилу на строку, формат: номер:IP. Если у вас не работают медиа и работает CF-прокси, то попробуйте убрать строку 2:149.154.167.220</p>
                   <textarea class="field mono mt" data-bind="tgc.dc_ip" rows="3" spellcheck="false" aria-label="Дата-центры" style="height:auto;padding:8px 10px"></textarea>
                 </div>
-                                <div class="panel">
+              </div>
+              <div class="stack">
+                <div class="panel">
                   <h3>Cloudflare Proxy</h3>
                   <div class="row"><div class="lbl">Включить CF-прокси<small>Использовать Cloudflare прокси для недоступных датацентров</small></div><button class="sw" role="switch" data-sw="tgc.cfproxy" aria-label="Включить CF-прокси"></button></div>
                   <div class="row"><div class="lbl">Мультиплексирование медиа (HTTP/2)<small>Объединять загрузку медиа через Cloudflare в общее HTTP/2-соединение для каждого датацентра и домена. Требуется включённый CF-прокси и включённый TLS.</small></div><button class="sw" role="switch" data-sw="tgc.h2" aria-label="Мультиплексирование медиа (HTTP/2)"></button></div>
@@ -252,8 +254,7 @@
                   <h3 class="mt">Cloudflare Worker</h3>
                   <div class="row"><div class="lbl">Cloudflare Worker домены (через запятую)<small>Например, name.account.workers.dev. Прокси передаёт через них подключение к Telegram DC по IP</small></div><button class="sw" role="switch" data-sw="tgc.cf_worker_on" aria-label="Cloudflare Worker домены"></button></div>
                   <input class="field mono mt-s" data-bind="tgc.cf_worker" placeholder="worker.example.workers.dev" spellcheck="false" aria-label="Cloudflare Worker домены">
-              </div>
-              <div class="stack">
+                </div>
                 <div class="panel">
                   <div class="panel-head"><h3>Состояние</h3><div class="inl"><button class="btn sm" data-act="tgCheck" id="tgCheckBtn">Проверить</button><button class="btn sm" data-act="tgRestart">Перезапустить</button><button class="btn sm" data-act="tgLog">Лог</button></div></div>
                   <div class="note" id="tgStats"></div>
