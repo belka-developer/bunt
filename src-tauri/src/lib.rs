@@ -200,6 +200,10 @@ fn tray_set_discord(state: tauri::State<'_, TrayItems>, on: bool) {
 }
 
 pub fn run() {
+    // Служебный запуск из установщика: пересоздать задачу автозапуска и выйти
+    if settings::restore_task_from_args() {
+        return;
+    }
     // После перезапуска от администратора закрываем старый экземпляр
     settings::takeover_from_args();
     tauri::Builder::default()

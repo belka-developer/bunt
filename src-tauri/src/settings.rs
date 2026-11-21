@@ -237,6 +237,35 @@ pub async fn relaunch_as_admin() -> Result<(), String> {
     Ok(())
 }
 
+/// Флаг командной строки, с которым установщик просит Бунт пересоздать задачу автозапуска после обновления.
+pub(crate) const RESTORE_FLAG: &str = "--restore-autostart-task";
+
+/// Нужно ли восстанавливать задачу: автозапуск с правами администратора был включён в настройках.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn wants_admin_task(json: &str) -> bool {
+    serde_json::from_str::<Settings>(json).map(|s| s.autostart_admin).unwrap_or(false)
+}
+
+/// Режим `--restore-autostart-task`: установщик запускает Бунт сразу после установки (уже с правами администратора),
+/// потому что при обновлении старая версия удаляется вместе с задачей планировщика. Бунт пересоздаёт её
+/// и сразу завершается, окно не открывается. Возвращает `true`, если это был служебный запуск.
+pub fn restore_task_from_args() -> bool {
+    if !std::env::args().any(|a| a == RESTORE_FLAG) {
+        return false;
+    }
+    #[cfg(windows)]
+    {
+        let json = std::env::var("APPDATA")
+            .ok()
+            .and_then(|d| fs::read_to_string(PathBuf::from(d).join("dev.belka.bunt").join("settings.json")).ok())
+            .unwrap_or_default();
+        if wants_admin_task(&json) {
+            let _ = apply_autostart_admin(true);
+        }
+    }
+    true
+}
+
 /// Вызывается при старте: если запущены с `--takeover PID`, закрывает старый (неадминистраторский) экземпляр.
 pub fn takeover_from_args() {
     #[cfg(windows)]
@@ -396,6 +425,14 @@ mod tests {
     fn task_remove_script_checks_result() {
         let r = task_remove_script();
         assert!(r.contains("Unregister-ScheduledTask") && r.contains(TASK_NAME) && r.contains("'ok'"));
+    }
+
+    #[test]
+    fn restore_only_when_admin_autostart_enabled() {
+        assert!(wants_admin_task(r#"{"autostart_admin":true}"#));
+        assert!(!wants_admin_task(r#"{"autostart":true}"#));
+        assert!(!wants_admin_task(""));
+        assert!(!wants_admin_task("не json"));
     }
 
     #[test]
