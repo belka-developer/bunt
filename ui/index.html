@@ -243,7 +243,7 @@
                   <p class="note">По одному правилу на строку, формат: номер:IP. Если у вас не работают медиа и работает CF-прокси, то попробуйте убрать строку 2:149.154.167.220</p>
                   <textarea class="field mono mt" data-bind="tgc.dc_ip" rows="3" spellcheck="false" aria-label="Дата-центры" style="height:auto;padding:8px 10px"></textarea>
                 </div>
-                <div class="panel">
+                                <div class="panel">
                   <h3>Cloudflare Proxy</h3>
                   <div class="row"><div class="lbl">Включить CF-прокси<small>Использовать Cloudflare прокси для недоступных датацентров</small></div><button class="sw" role="switch" data-sw="tgc.cfproxy" aria-label="Включить CF-прокси"></button></div>
                   <div class="row"><div class="lbl">Мультиплексирование медиа (HTTP/2)<small>Объединять загрузку медиа через Cloudflare в общее HTTP/2-соединение для каждого датацентра и домена. Требуется включённый CF-прокси и включённый TLS.</small></div><button class="sw" role="switch" data-sw="tgc.h2" aria-label="Мультиплексирование медиа (HTTP/2)"></button></div>
@@ -262,7 +262,7 @@
                 <div class="panel">
                   <h3>Логи и производительность</h3>
                   <div class="row"><div class="lbl">Подробное логирование (verbose)<small>Если включено, в файл логов пишется больше подробностей — необходимо при поиске неполадок</small></div><button class="sw" role="switch" data-sw="tgc.verbose" aria-label="Подробное логирование (verbose)"></button></div>
-                  <div class="row"><div class="lbl">Выключить TLS для CF-прокси и CF-worker<small>Если включено, прокси будет использовать 80 порт для CF-прокси и CF-worker подключений</small></div><button class="sw" role="switch" data-sw="tgc.no_secure" aria-label="Выключить TLS для CF-прокси и CF-worker"></button></div>
+                  <div class="row" id="tgNoSecureRow"><div class="lbl">Выключить TLS для CF-прокси и CF-worker<small>Если включено, прокси будет использовать 80 порт для CF-прокси и CF-worker подключений</small></div><button class="sw" role="switch" data-sw="tgc.no_secure" aria-label="Выключить TLS для CF-прокси и CF-worker"></button></div>
                   <div class="row"><div class="lbl">Буфер, КБ (по умолчанию 256)<small>Размер буфера приёма/передачи в килобайтах. Больше значение — больше выделение памяти на сокет</small></div><input class="field mono" data-bind="tgc.buf_kb" inputmode="numeric" aria-label="Буфер, КБ" style="width:100px"></div>
                   <div class="row"><div class="lbl">Пул WebSocket-сессий (по умолчанию 4)<small>Сколько готовых WebSocket-соединений держать для каждого датацентра. 0 отключает прямой DC->IP WebSocket-маршрут</small></div><input class="field mono" data-bind="tgc.pool_size" inputmode="numeric" aria-label="Пул WebSocket-сессий" style="width:100px"></div>
                   <div class="row"><div class="lbl">Макс. размер лога, МБ (по умолчанию 5)<small>При достижении лимита файл перезаписывается</small></div><input class="field mono" data-bind="tgc.log_max_mb" inputmode="numeric" aria-label="Макс. размер лога, МБ" style="width:100px"></div>
@@ -274,7 +274,7 @@
                   <div class="row"><div class="lbl">Старых логов<small>Сколько файлов хранить после ротации, от 1 до 20</small></div><input class="field mono" data-bind="tgc.log_backups" inputmode="numeric" aria-label="Старых логов" style="width:110px"></div>
                   </details>
                   <div class="row" style="justify-content:flex-end;gap:8px">
-                    <button class="btn" data-act="tgReset">Сбросить</button>
+                    <button class="btn" data-act="tgReset" title="Вернуть все настройки Telegram к значениям по умолчанию (ключ останется прежним)">Сбросить по умолчанию</button>
                     <button class="btn primary" data-act="tgSave">Сохранить</button>
                   </div>
                   <p class="note mt-s">Если запрет включён, при «Сохранить» прокси перезапустится.</p>

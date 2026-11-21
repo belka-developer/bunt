@@ -762,7 +762,16 @@
     if (typeof o === 'string') { toast('Проверьте числовые поля: ' + o, 'warn'); return null; }
     return o;
   }
-  function tgSave() {
+  var tgAutoTimer = null;
+  function tgAuto() {
+    clearTimeout(tgAutoTimer);
+    if (!S.on.telegram) return;
+    tgAutoTimer = setTimeout(function () {
+      if (!inTauri) { toast('Настройки сохранены, прокси будет перезапущен'); return; }
+      tgSave(true);
+    }, 900);
+  }
+  function tgSave(auto) {
     if (!inTauri || !installed('telegram')) return;
     var o = tgPayload();
     if (typeof o === 'string') { toast('Проверьте числовые поля: ' + o, 'warn'); return; }
@@ -770,7 +779,7 @@
       applyTg(st);
       S.on.telegram = st.running;
       addLog({ svc: SVC.telegram.name, m: 'Настройки применены' + (st.running ? ', прокси перезапущен. Если менялись порт или секрет, добавьте новую ссылку в Telegram.' : '.') });
-      toast('Настройки применены');
+      toast(st.running ? 'Настройки сохранены, прокси перезапущен' : 'Настройки сохранены');
       refreshTgExtras();
     }).catch(function (err) { toast(String(err).slice(0, 220), 'warn'); S.on.telegram = false; }).then(renderAll);
   }
@@ -815,11 +824,17 @@
     return T.core.invoke('telegram_foreign').then(function (f) { if (f.procs.length) askTgTakeOver(f); }).catch(function () {});
   }
   function tgReset() {
-    if (!inTauri || !installed('telegram')) return;
+    if (!inTauri) {
+      var sec = S.tgc.secret, au = S.tgc.autostart;
+      S.tgc = { autostart: au, host: '127.0.0.1', port: '1443', secret: sec, dc_ip: '2:149.154.167.220\n4:149.154.167.220', verbose: false, buf_kb: '256', pool_size: '4', log_max_mb: '5', log_backups: '1', cfproxy: true, h2: true, cf_domain_on: false, cf_domain: '', cf_worker_on: false, cf_worker: '', force_test_dc: false, no_secure: false, fake_tls_domain: '' };
+      toast('Настройки сброшены по умолчанию' + (S.on.telegram ? ', прокси будет перезапущен' : ''));
+      renderAll(); return;
+    }
+    if (!installed('telegram')) return;
     T.core.invoke('telegram_config_reset').then(function (st) {
       applyTg(st);
       S.on.telegram = st.running;
-      toast('Настройки сброшены (секрет прежний)');
+      toast('Настройки сброшены по умолчанию' + (st.running ? ', прокси перезапущен' : '') + '. Ключ прежний.');
     }).catch(function (err) { toast(String(err).slice(0, 220), 'warn'); }).then(renderAll);
   }
   function tgSecret() {
@@ -2342,7 +2357,16 @@
       T.core.invoke('zapret_list_save', { key: k, text: text }).then(done).catch(failToast);
     },
     closeModal: closeModal,
-    goTelegram: function () { go('telegram'); },
+    goTelegram: function () {
+      go('telegram');
+      setTimeout(function () {
+        var r = $('#tgNoSecureRow');
+        if (!r || !r.offsetParent) return;
+        r.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        r.classList.remove('hl-pulse'); void r.offsetWidth; r.classList.add('hl-pulse');
+        setTimeout(function () { r.classList.remove('hl-pulse'); }, 4200);
+      }, 120);
+    },
     updIpset: function () {
       if (!inTauri) { S.discord.ipsetUpdated = 'только что, ' + hms().slice(0, 5); toast('Список обновлён (демонстрация)'); renderDiscord(); return; }
       toast('Скачиваем список…');
@@ -2479,7 +2503,7 @@
     probe: probe,
     fSave: function () { fSave(); }, fSaveToken: fSaveToken, fServer: fServer, fPing: function () { fPingAll(false); }, fClearToken: fClearToken, fReset: fReset, fRepair: fRepair, fLog: fLog,
     fAdapter: function (a) { fAdapter(a); }, fTakeOver: function (a) { fTakeOver(a); },
-    tgSave: tgSave, tgReset: tgReset, tgSecret: tgSecret,
+    tgSave: function () { tgSave(false); }, tgReset: tgReset, tgSecret: tgSecret,
     tgLan: function () {
       var on = !tgIsLan();
       S.tgc.host = on ? '0.0.0.0' : '127.0.0.1';
@@ -2590,6 +2614,7 @@
         return;
       }
       if (d.sw === 'tgc.autostart') { tgAutostart(S.tgc.autostart); renderAll(); return; }
+      if (d.sw.indexOf('tgc.') === 0) { renderAll(); tgAuto(); return; }
       if (d.sw.indexOf('w.config.') === 0) { wSaveConfig(); renderAll(); return; }
       if (d.sw.indexOf('dn.') === 0) { renderAll(); return; }
       if (d.sw === 'v.config.sub_auto') { vSave(); if (S.v.config.sub_auto) vAutoSubs(); return; }
@@ -2625,6 +2650,7 @@
     if (el.dataset && el.dataset.bind) {
       set(el.dataset.bind, el.value); renderAll();
       var bn = el.dataset.bind;
+      if (bn.indexOf('tgc.') === 0) { tgAuto(); return; }
       if (bn === 'discord.tcpPorts' || bn === 'discord.udpPorts') {
         var pv = String(get(bn)).trim();
         if (!validPorts(pv)) { toast('Порты указаны неверно. Пример: 1024-65535 или 3478,50000-50100', 'warn'); set(bn, '1024-65535'); renderAll(); return; }
