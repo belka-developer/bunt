@@ -88,9 +88,7 @@
             <div class="notice warn" id="tgFixNote" role="note">
               <svg class="ic"><use href="#i-alert"/></svg>
               <div class="nt">
-                <strong>Не работает запрет для Telegram?</strong>
-                <span>Поставьте галочку напротив пункта «Выключить TLS для CF-прокси и CF-worker» (в Бунте — «Без шифрования до Cloudflare», блок «Дополнительно» на вкладке Telegram) и сохраните.</span>
-              </div>
+                <strong>Не работает запрет для Telegram?</strong><span>Поставьте галочку напротив пункта «Выключить TLS для CF-прокси и CF-worker» и сохраните.</span></div>
               <button class="btn sm" data-act="goTelegram">Открыть настройки Telegram</button>
             </div>
             <div class="page-head">
@@ -218,17 +216,17 @@
             <div class="cols">
               <div class="stack">
                 <div class="panel">
-                  <h3>Подключение</h3>
+                  <h3>Подключение MTProto</h3>
                   <div class="row"><div class="lbl">Доступ из локальной сети<small id="tgLanDesc"></small></div><button class="sw" role="switch" id="tgLanSw" data-act="tgLan" aria-label="Доступ из локальной сети"></button></div>
-                  <div class="row"><div class="lbl">Адрес прослушивания<small>127.0.0.1: только этот компьютер. 0.0.0.0: вся локальная сеть</small></div><input class="field mono" data-bind="tgc.host" aria-label="Адрес" style="width:150px"></div>
-                  <div class="row"><span class="lbl">Порт</span><input class="field mono" data-bind="tgc.port" inputmode="numeric" maxlength="5" aria-label="Порт" style="width:110px"></div>
-                  <div class="row"><div class="lbl">Секрет<small>32 символа, часть ссылки для Telegram</small></div><div class="inl"><input class="field mono" data-bind="tgc.secret" maxlength="32" aria-label="Секрет" style="width:270px"><button class="btn sm" data-act="tgSecret">Новый</button></div></div>
+                  <div class="row"><div class="lbl">IP-адрес<small>Адрес, на котором прокси принимает подключения. Обычно 127.0.0.1 — локальная сеть, 0.0.0.0 - все интерфейсы</small></div><input class="field mono" data-bind="tgc.host" aria-label="IP-адрес" style="width:150px"></div>
+                  <div class="row"><div class="lbl">Порт<small>В Telegram Desktop в настройках прокси должен быть указан тот же порт</small></div><input class="field mono" data-bind="tgc.port" inputmode="numeric" maxlength="5" aria-label="Порт" style="width:110px"></div>
+                  <div class="row"><div class="lbl">Ключ<small>Секретный ключ для авторизации клиентов</small></div><div class="inl"><input class="field mono" data-bind="tgc.secret" maxlength="32" aria-label="Ключ" style="width:270px"><button class="btn sm" data-act="tgSecret">Новый</button></div></div>
                   <div class="field-row mt">
                     <input class="field mono" id="tgLink" readonly aria-label="Ссылка для Telegram">
                     <button class="btn" data-act="copyTg"><svg class="ic"><use href="#i-copy"/></svg>Копировать</button>
                     <button class="btn" data-act="tgOpen">Открыть в Telegram</button>
                   </div>
-                  <p class="note mt">Включите запрет, затем вставьте ссылку в любой чат Telegram (например, в «Избранное») и нажмите на неё: Telegram предложит добавить прокси. Это нужно сделать один раз. Ссылка обновляется после «Применить».</p>
+                  <p class="note mt">Включите запрет, затем вставьте ссылку в любой чат Telegram (например, в «Избранное») и нажмите на неё: Telegram предложит добавить прокси. Это нужно сделать один раз. Ссылка обновляется после «Сохранить».</p>
                 </div>
                 <div class="panel" id="tgPhone">
                   <div class="panel-head"><h3>Телефон в той же сети</h3></div>
@@ -241,19 +239,19 @@
                   </div>
                 </div>
                 <div class="panel">
-                  <h3>Дата-центры Telegram</h3>
-                  <p class="note">По одной строке в формате <span class="mono">номер:IP</span>. Пустой список отключает перенаправление.</p>
+                  <h3>Датацентры Telegram (DC → IP)</h3>
+                  <p class="note">По одному правилу на строку, формат: номер:IP. Если у вас не работают медиа и работает CF-прокси, то попробуйте убрать строку 2:149.154.167.220</p>
                   <textarea class="field mono mt" data-bind="tgc.dc_ip" rows="3" spellcheck="false" aria-label="Дата-центры" style="height:auto;padding:8px 10px"></textarea>
                 </div>
                 <div class="panel">
-                  <h3>Cloudflare</h3>
-                  <div class="row"><div class="lbl">Резерв через Cloudflare<small>Если прямое соединение недоступно</small></div><button class="sw" role="switch" data-sw="tgc.cfproxy" aria-label="Резерв через Cloudflare"></button></div>
-                  <div class="row"><div class="lbl">HTTP/2 для медиа<small>Объединяет загрузку медиа в общее соединение. Нужны резерв Cloudflare и включённое шифрование</small></div><button class="sw" role="switch" data-sw="tgc.h2" aria-label="HTTP/2"></button></div>
-                  <div class="row"><span class="lbl">Свой домен Cloudflare</span><button class="sw" role="switch" data-sw="tgc.cf_domain_on" aria-label="Свой домен Cloudflare"></button></div>
-                  <input class="field mono mt-s" data-bind="tgc.cf_domain" placeholder="example.com, второй.example.com" spellcheck="false" aria-label="Домены Cloudflare">
-                  <div class="row"><span class="lbl">Домен Cloudflare Worker</span><button class="sw" role="switch" data-sw="tgc.cf_worker_on" aria-label="Cloudflare Worker"></button></div>
-                  <input class="field mono mt-s" data-bind="tgc.cf_worker" placeholder="worker.example.workers.dev" spellcheck="false" aria-label="Домены Worker">
-                </div>
+                  <h3>Cloudflare Proxy</h3>
+                  <div class="row"><div class="lbl">Включить CF-прокси<small>Использовать Cloudflare прокси для недоступных датацентров</small></div><button class="sw" role="switch" data-sw="tgc.cfproxy" aria-label="Включить CF-прокси"></button></div>
+                  <div class="row"><div class="lbl">Мультиплексирование медиа (HTTP/2)<small>Объединять загрузку медиа через Cloudflare в общее HTTP/2-соединение для каждого датацентра и домена. Требуется включённый CF-прокси и включённый TLS.</small></div><button class="sw" role="switch" data-sw="tgc.h2" aria-label="Мультиплексирование медиа (HTTP/2)"></button></div>
+                  <div class="row"><div class="lbl">Свой домен<small>Указать свои домены вместо автоматического выбора. Несколько доменов указывайте через запятую</small></div><button class="sw" role="switch" data-sw="tgc.cf_domain_on" aria-label="Свой домен"></button></div>
+                  <input class="field mono mt-s" data-bind="tgc.cf_domain" placeholder="example.com, второй.example.com" spellcheck="false" aria-label="Свой домен">
+                  <h3 class="mt">Cloudflare Worker</h3>
+                  <div class="row"><div class="lbl">Cloudflare Worker домены (через запятую)<small>Например, name.account.workers.dev. Прокси передаёт через них подключение к Telegram DC по IP</small></div><button class="sw" role="switch" data-sw="tgc.cf_worker_on" aria-label="Cloudflare Worker домены"></button></div>
+                  <input class="field mono mt-s" data-bind="tgc.cf_worker" placeholder="worker.example.workers.dev" spellcheck="false" aria-label="Cloudflare Worker домены">
               </div>
               <div class="stack">
                 <div class="panel">
@@ -262,22 +260,24 @@
                   <div id="tgChecks"></div>
                 </div>
                 <div class="panel">
-                  <h3>Дополнительно</h3>
-                  <div class="row"><div class="lbl">Запускать вместе с Windows<small>Прокси стартует при запуске Бунта, а Бунт при входе в Windows</small></div><button class="sw" role="switch" data-sw="tgc.autostart" aria-label="Запускать вместе с Windows"></button></div>
-                  <div class="row"><div class="lbl">Подробный лог<small>Режим отладки, лог растёт быстрее</small></div><button class="sw" role="switch" data-sw="tgc.verbose" aria-label="Подробный лог"></button></div>
-                  <div class="row"><div class="lbl">Без шифрования до Cloudflare<small>Порт 80 вместо 443 для Cloudflare и Worker</small></div><button class="sw" role="switch" data-sw="tgc.no_secure" aria-label="Без шифрования"></button></div>
+                  <h3>Логи и производительность</h3>
+                  <div class="row"><div class="lbl">Подробное логирование (verbose)<small>Если включено, в файл логов пишется больше подробностей — необходимо при поиске неполадок</small></div><button class="sw" role="switch" data-sw="tgc.verbose" aria-label="Подробное логирование (verbose)"></button></div>
+                  <div class="row"><div class="lbl">Выключить TLS для CF-прокси и CF-worker<small>Если включено, прокси будет использовать 80 порт для CF-прокси и CF-worker подключений</small></div><button class="sw" role="switch" data-sw="tgc.no_secure" aria-label="Выключить TLS для CF-прокси и CF-worker"></button></div>
+                  <div class="row"><div class="lbl">Буфер, КБ (по умолчанию 256)<small>Размер буфера приёма/передачи в килобайтах. Больше значение — больше выделение памяти на сокет</small></div><input class="field mono" data-bind="tgc.buf_kb" inputmode="numeric" aria-label="Буфер, КБ" style="width:100px"></div>
+                  <div class="row"><div class="lbl">Пул WebSocket-сессий (по умолчанию 4)<small>Сколько готовых WebSocket-соединений держать для каждого датацентра. 0 отключает прямой DC->IP WebSocket-маршрут</small></div><input class="field mono" data-bind="tgc.pool_size" inputmode="numeric" aria-label="Пул WebSocket-сессий" style="width:100px"></div>
+                  <div class="row"><div class="lbl">Макс. размер лога, МБ (по умолчанию 5)<small>При достижении лимита файл перезаписывается</small></div><input class="field mono" data-bind="tgc.log_max_mb" inputmode="numeric" aria-label="Макс. размер лога, МБ" style="width:100px"></div>
+                  <h3 class="mt">Запуск Windows</h3>
+                  <div class="row"><div class="lbl">Автозапуск при включении компьютера<small>Если переместить программу в другую папку, запись автозапуска может сброситься.</small></div><button class="sw" role="switch" data-sw="tgc.autostart" aria-label="Автозапуск при включении компьютера"></button></div>
+                  <details class="mt"><summary class="note" style="cursor:pointer">Только в Бунте (в оригинале нет)</summary>
                   <div class="row"><div class="lbl">Тестовые дата-центры<small>Весь трафик на тестовые DC Telegram</small></div><button class="sw" role="switch" data-sw="tgc.force_test_dc" aria-label="Тестовые дата-центры"></button></div>
                   <div class="row"><div class="lbl">Fake TLS, домен<small>Маскировка под обычный HTTPS. Пусто: выключено</small></div><input class="field mono" data-bind="tgc.fake_tls_domain" placeholder="example.com" spellcheck="false" aria-label="Fake TLS" style="width:190px"></div>
-                  <div class="row"><div class="lbl">PROXY protocol<small>Принимать заголовок PROXY v1, если прокси стоит за nginx или haproxy. Для обычного использования выключено</small></div><button class="sw" role="switch" data-sw="tgc.proxy_protocol" aria-label="PROXY protocol"></button></div>
-                  <div class="row"><div class="lbl">Буфер сокета, КБ<small>От 4, по умолчанию 256</small></div><input class="field mono" data-bind="tgc.buf_kb" inputmode="numeric" aria-label="Буфер" style="width:100px"></div>
-                  <div class="row"><div class="lbl">Пул соединений<small>На один DC, 0 отключает прямой WebSocket</small></div><input class="field mono" data-bind="tgc.pool_size" inputmode="numeric" aria-label="Пул" style="width:100px"></div>
-                  <div class="row"><div class="lbl">Размер лога, МБ<small>После этого размера файл ротируется</small></div><input class="field mono" data-bind="tgc.log_max_mb" inputmode="numeric" aria-label="Размер лога" style="width:100px"></div>
                   <div class="row"><div class="lbl">Старых логов<small>Сколько файлов хранить после ротации, от 1 до 20</small></div><input class="field mono" data-bind="tgc.log_backups" inputmode="numeric" aria-label="Старых логов" style="width:110px"></div>
+                  </details>
                   <div class="row" style="justify-content:flex-end;gap:8px">
                     <button class="btn" data-act="tgReset">Сбросить</button>
-                    <button class="btn primary" data-act="tgSave">Применить</button>
+                    <button class="btn primary" data-act="tgSave">Сохранить</button>
                   </div>
-                  <p class="note mt-s">Если запрет включён, при «Применить» прокси перезапустится.</p>
+                  <p class="note mt-s">Если запрет включён, при «Сохранить» прокси перезапустится.</p>
                 </div>
                 <div class="panel">
                   <h3>Компонент</h3>
