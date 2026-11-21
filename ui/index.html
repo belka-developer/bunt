@@ -85,12 +85,6 @@
 
           <!-- Главная -->
           <section data-page="home">
-            <div class="notice warn" id="tgFixNote" role="note">
-              <svg class="ic"><use href="#i-alert"/></svg>
-              <div class="nt">
-                <strong>Не работает запрет для Telegram?</strong><span>Поставьте галочку напротив пункта «Выключить TLS для CF-прокси и CF-worker» и сохраните.</span></div>
-              <button class="btn sm" data-act="goTelegram">Открыть настройки Telegram</button>
-            </div>
             <div class="page-head">
               <div>
                 <h1>Добро пожаловать!</h1>
@@ -102,6 +96,18 @@
               </div>
             </div>
             <div class="panel upd-banner" id="homeUpd" hidden></div>
+            <div class="notice warn" id="adminTaskNote" role="note" hidden>
+              <svg class="ic"><use href="#i-alert"/></svg>
+              <div class="nt">
+                <strong>Автозапуск с правами администратора сломан</strong><span>Чтобы починить, нажмите на переключатель «Запускать с правами администратора»: выключите его и включите снова.</span></div>
+              <button class="btn sm" data-act="goAdminTask">Открыть настройки</button>
+            </div>
+            <div class="notice warn" id="tgFixNote" role="note">
+              <svg class="ic"><use href="#i-alert"/></svg>
+              <div class="nt">
+                <strong>Не работает запрет для Telegram?</strong><span>Поставьте галочку напротив пункта «Выключить TLS для CF-прокси и CF-worker» и сохраните.</span></div>
+              <button class="btn sm" data-act="goTelegram">Открыть настройки Telegram</button>
+            </div>
             <div id="homeNotes"></div>
           </section>
 
@@ -724,7 +730,7 @@
                 <div class="panel">
                   <h3>Общие</h3>
                   <div class="row"><div class="lbl">Запускать при старте Windows<small id="autoInfo"></small></div><button class="sw" role="switch" data-sw="settings.autostart" aria-label="Запускать при старте Windows"></button></div>
-                  <div class="row"><div class="lbl">Запускать с правами администратора<small>Бунт стартует при входе в Windows сразу от администратора и без запроса UAC, поэтому запрет и VPN работают без «Дать права». Заменяет обычный автозапуск. Включается и выключается из Бунта с правами администратора. Запись создаётся в планировщике заданий и удаляется вместе с программой.</small><small id="autoAdminInfo"></small></div><button class="sw" role="switch" data-sw="settings.autostart_admin" aria-label="Запускать с правами администратора"></button></div>
+                  <div class="row" id="autoAdminRow"><div class="lbl">Запускать с правами администратора<small>Бунт стартует при входе в Windows сразу от администратора и без запроса UAC, поэтому запрет и VPN работают без «Дать права». Заменяет обычный автозапуск. Включается и выключается из Бунта с правами администратора. Запись создаётся в планировщике заданий и удаляется вместе с программой.</small><small id="autoAdminInfo"></small></div><button class="sw" role="switch" data-sw="settings.autostart_admin" aria-label="Запускать с правами администратора"></button></div>
                   <div class="row"><span class="lbl">Сворачивать в трей</span><button class="sw" role="switch" data-sw="settings.tray" aria-label="Сворачивать в трей"></button></div>
                   <div class="row"><span class="lbl">Показывать уведомления</span><button class="sw" role="switch" data-sw="settings.notify" aria-label="Показывать уведомления"></button></div>
                   <div class="row"><span class="lbl">Проверять обновления автоматически</span><button class="sw" role="switch" data-sw="settings.autoupdate" aria-label="Проверять обновления автоматически"></button></div>

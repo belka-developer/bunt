@@ -520,7 +520,7 @@
   /* настройки сохраняются сразу при переключении */
   function saveSettings() {
     if (!inTauri) return;
-    T.core.invoke('settings_set', { settings: S.settings }).then(function (s) { S.settings = s; sync(); renderAutostart(); }).catch(function (err) {
+    T.core.invoke('settings_set', { settings: S.settings }).then(function (s) { S.settings = s; sync(); renderAutostart(); checkAdminTask(); }).catch(function (err) {
       toast(String(err).slice(0, 200), 'warn');
       T.core.invoke('settings_get').then(function (s) { S.settings = s; sync(); renderAutostart(); });
     });
@@ -547,6 +547,13 @@
   function renderAdmin() {
     var b = $('#adminBanner');
     if (b) b.hidden = !(inTauri && S.admin === false);
+    var t = $('#adminTaskNote');
+    if (t) t.hidden = !(inTauri && S.settings.autostart_admin && S.taskOk === false);
+  }
+  /* проверка задачи автозапуска: без прав администратора её не прочитать, тогда плашку не показываем */
+  function checkAdminTask() {
+    if (!inTauri || !S.settings.autostart_admin) { S.taskOk = undefined; renderAdmin(); return; }
+    T.core.invoke('autostart_task').then(function (ok) { S.taskOk = ok; renderAdmin(); }).catch(function () {});
   }
   function adminNeeded(quiet) {
     if (!(inTauri && S.admin === false)) return false;
@@ -638,6 +645,19 @@
     renderVersions(); renderNotes(); renderSecurity(); renderAdmin(); sync(); syncTray();
   }
 
+  /* жёлтая подсветка пункта настроек: гаснет по таймеру или как только пользователь нажал на пункт */
+  var hlTimer = null;
+  function hlRow(sel) {
+    setTimeout(function () {
+      var r = $(sel);
+      if (!r || !r.offsetParent) return;
+      $$('.hl-pulse').forEach(function (x) { x.classList.remove('hl-pulse'); });
+      clearTimeout(hlTimer);
+      r.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      void r.offsetWidth; r.classList.add('hl-pulse');
+      hlTimer = setTimeout(function () { r.classList.remove('hl-pulse'); }, 3300);
+    }, 120);
+  }
   function go(page) {
     if (PAGES.indexOf(page) < 0) page = 'home';
     S.page = page;
@@ -2357,16 +2377,8 @@
       T.core.invoke('zapret_list_save', { key: k, text: text }).then(done).catch(failToast);
     },
     closeModal: closeModal,
-    goTelegram: function () {
-      go('telegram');
-      setTimeout(function () {
-        var r = $('#tgNoSecureRow');
-        if (!r || !r.offsetParent) return;
-        r.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        r.classList.remove('hl-pulse'); void r.offsetWidth; r.classList.add('hl-pulse');
-        setTimeout(function () { r.classList.remove('hl-pulse'); }, 4200);
-      }, 120);
-    },
+    goTelegram: function () { go('telegram'); hlRow('#tgNoSecureRow'); },
+    goAdminTask: function () { go('settings'); hlRow('#autoAdminRow'); },
     updIpset: function () {
       if (!inTauri) { S.discord.ipsetUpdated = 'только что, ' + hms().slice(0, 5); toast('Список обновлён (демонстрация)'); renderDiscord(); return; }
       toast('Скачиваем список…');
@@ -2595,6 +2607,8 @@
   };
 
   document.addEventListener('click', function (e) {
+    var hl = e.target.closest('.hl-pulse');
+    if (hl) hl.classList.remove('hl-pulse');
     var el = e.target.closest('[data-go],[data-svc],[data-strat],[data-sw],[data-seg] button,[data-act],[data-url]');
     if (!el) return;
     var d = el.dataset;
@@ -2830,6 +2844,7 @@
       startPending = false;
       sync();
       renderAutostart();
+      checkAdminTask();
       if (S.settings.autoupdate) checkUpdates(true); else renderAll();
     });
   }
