@@ -62,11 +62,11 @@
             <button class="nav" data-go="home"><svg class="ic"><use href="#i-home"/></svg>Главная</button>
             <button class="nav" data-go="discord"><svg class="ic"><use href="#i-chat"/></svg>Zapret (Discord)</button>
             <button class="nav" data-go="telegram"><svg class="ic"><use href="#i-plane"/></svg>Zapret (Telegram)</button>
-            <button class="nav" data-go="vless"><svg class="ic"><use href="#i-net"/></svg>VLESS</button>
-            <button class="nav" data-go="proxy"><svg class="ic"><use href="#i-wifi"/></svg>Proxy</button>
-            <button class="nav" data-go="wg"><svg class="ic"><use href="#i-vpn"/></svg>WireGuard</button>
+            <button class="nav" data-go="vless"><svg class="ic"><use href="#i-net"/></svg>VLESS<span class="beta">beta</span></button>
+            <button class="nav" data-go="proxy"><svg class="ic"><use href="#i-wifi"/></svg>Proxy<span class="beta">beta</span></button>
+            <button class="nav" data-go="wg"><svg class="ic"><use href="#i-vpn"/></svg>WireGuard<span class="beta">beta</span></button>
             <button class="nav" data-go="dns"><svg class="ic"><use href="#i-globe"/></svg>DNS</button>
-            <button class="nav" data-go="fptn"><svg class="ic"><use href="#i-tunnel"/></svg>FPTN</button>
+            <button class="nav" data-go="fptn"><svg class="ic"><use href="#i-tunnel"/></svg>FPTN<span class="beta">beta</span></button>
             <button class="nav" data-go="security"><svg class="ic"><use href="#i-shield"/></svg>Безопасность</button>
             <button class="nav" data-go="updates"><svg class="ic"><use href="#i-download"/></svg>Обновления<span class="nav-dot" id="navDot" hidden></span></button>
             <button class="nav" data-go="settings"><svg class="ic"><use href="#i-sliders"/></svg>Настройки</button>
@@ -85,6 +85,14 @@
 
           <!-- Главная -->
           <section data-page="home">
+            <div class="notice warn" id="tgFixNote" role="note">
+              <svg class="ic"><use href="#i-alert"/></svg>
+              <div class="nt">
+                <strong>Не работает запрет для Telegram?</strong>
+                <span>Поставьте галочку напротив пункта «Выключить TLS для CF-прокси и CF-worker» (в Бунте — «Без шифрования до Cloudflare», блок «Дополнительно» на вкладке Telegram) и сохраните.</span>
+              </div>
+              <button class="btn sm" data-act="goTelegram">Открыть настройки Telegram</button>
+            </div>
             <div class="page-head">
               <div>
                 <h1>Добро пожаловать!</h1>
@@ -240,7 +248,7 @@
                 <div class="panel">
                   <h3>Cloudflare</h3>
                   <div class="row"><div class="lbl">Резерв через Cloudflare<small>Если прямое соединение недоступно</small></div><button class="sw" role="switch" data-sw="tgc.cfproxy" aria-label="Резерв через Cloudflare"></button></div>
-                  <div class="row"><div class="lbl">HTTP/2 для медиа<small>Работает вместе с резервом Cloudflare</small></div><button class="sw" role="switch" data-sw="tgc.h2" aria-label="HTTP/2"></button></div>
+                  <div class="row"><div class="lbl">HTTP/2 для медиа<small>Объединяет загрузку медиа в общее соединение. Нужны резерв Cloudflare и включённое шифрование</small></div><button class="sw" role="switch" data-sw="tgc.h2" aria-label="HTTP/2"></button></div>
                   <div class="row"><span class="lbl">Свой домен Cloudflare</span><button class="sw" role="switch" data-sw="tgc.cf_domain_on" aria-label="Свой домен Cloudflare"></button></div>
                   <input class="field mono mt-s" data-bind="tgc.cf_domain" placeholder="example.com, второй.example.com" spellcheck="false" aria-label="Домены Cloudflare">
                   <div class="row"><span class="lbl">Домен Cloudflare Worker</span><button class="sw" role="switch" data-sw="tgc.cf_worker_on" aria-label="Cloudflare Worker"></button></div>
@@ -260,6 +268,7 @@
                   <div class="row"><div class="lbl">Без шифрования до Cloudflare<small>Порт 80 вместо 443 для Cloudflare и Worker</small></div><button class="sw" role="switch" data-sw="tgc.no_secure" aria-label="Без шифрования"></button></div>
                   <div class="row"><div class="lbl">Тестовые дата-центры<small>Весь трафик на тестовые DC Telegram</small></div><button class="sw" role="switch" data-sw="tgc.force_test_dc" aria-label="Тестовые дата-центры"></button></div>
                   <div class="row"><div class="lbl">Fake TLS, домен<small>Маскировка под обычный HTTPS. Пусто: выключено</small></div><input class="field mono" data-bind="tgc.fake_tls_domain" placeholder="example.com" spellcheck="false" aria-label="Fake TLS" style="width:190px"></div>
+                  <div class="row"><div class="lbl">PROXY protocol<small>Принимать заголовок PROXY v1, если прокси стоит за nginx или haproxy. Для обычного использования выключено</small></div><button class="sw" role="switch" data-sw="tgc.proxy_protocol" aria-label="PROXY protocol"></button></div>
                   <div class="row"><div class="lbl">Буфер сокета, КБ<small>От 4, по умолчанию 256</small></div><input class="field mono" data-bind="tgc.buf_kb" inputmode="numeric" aria-label="Буфер" style="width:100px"></div>
                   <div class="row"><div class="lbl">Пул соединений<small>На один DC, 0 отключает прямой WebSocket</small></div><input class="field mono" data-bind="tgc.pool_size" inputmode="numeric" aria-label="Пул" style="width:100px"></div>
                   <div class="row"><div class="lbl">Размер лога, МБ<small>После этого размера файл ротируется</small></div><input class="field mono" data-bind="tgc.log_max_mb" inputmode="numeric" aria-label="Размер лога" style="width:100px"></div>

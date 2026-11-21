@@ -82,6 +82,8 @@ pub struct Config {
     pub force_test_dc: bool,
     pub no_secure: bool,
     pub fake_tls_domain: String,
+    /// Принимать заголовок PROXY protocol v1 (для работы за nginx или haproxy)
+    pub proxy_protocol: bool,
     /// Запускать прокси при старте Бунта (и Бунт при старте Windows, это включает интерфейс)
     pub autostart: bool,
 }
@@ -107,6 +109,7 @@ impl Default for Config {
             force_test_dc: false,
             no_secure: false,
             fake_tls_domain: String::new(),
+            proxy_protocol: false,
             autostart: false,
         }
     }
@@ -262,6 +265,9 @@ pub(crate) fn build_args(c: &Config, log_file: &Path) -> Vec<String> {
     }
     if c.force_test_dc {
         push("--force-test-dc", None);
+    }
+    if c.proxy_protocol {
+        push("--proxy-protocol", None);
     }
     a
 }
@@ -827,14 +833,14 @@ mod tests {
     #[test]
     fn switches_become_flags() {
         let c = Config {
-            verbose: true, cfproxy: false, h2: false, no_secure: true, force_test_dc: true,
+            verbose: true, cfproxy: false, h2: false, no_secure: true, force_test_dc: true, proxy_protocol: true,
             cf_domain_on: true, cf_domain: "a.example.com, b.example.com".into(),
             cf_worker_on: true, cf_worker: "w.example.com".into(),
             fake_tls_domain: "example.com".into(), dc_ip: String::new(), ..cfg()
         };
         validate(&c).unwrap();
         let a = build_args(&c, Path::new("p.log"));
-        for f in ["-v", "--no-cfproxy", "--no-h2", "--no-secure", "--force-test-dc"] {
+        for f in ["-v", "--no-cfproxy", "--no-h2", "--no-secure", "--force-test-dc", "--proxy-protocol"] {
             assert!(a.iter().any(|x| x == f), "{f}");
         }
         assert_eq!(a.iter().filter(|x| *x == "--cfproxy-domain").count(), 2);
